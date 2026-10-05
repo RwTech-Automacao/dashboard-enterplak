@@ -1,0 +1,6 @@
+# Só o site estático vai para o deploy
+*.sql
+n8n_*
+expedicao/ref/
+_originais/
+.claude/

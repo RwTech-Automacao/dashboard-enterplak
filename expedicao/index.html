@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Expedição — Enterplak</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --brand: #7B1A2C;
+    --brand-light: #9B2840;
+    --brand-bg: rgba(123,26,44,0.08);
+    --bg: #F3F0F1;
+    --card: #FFFFFF;
+    --border: #E5DCE0;
+    --text: #2D1F25;
+    --muted: #7A6A72;
+    --green: #16A34A;
+    --red: #DC2626;
+    --orange: #EA580C;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+
+  header { background: var(--card); border-bottom: 1px solid var(--border); padding: 16px 32px; display: flex; align-items: center; gap: 16px; }
+  header img { height: 40px; width: auto; }
+  header h1 { font-size: 22px; font-weight: 700; color: var(--brand); }
+  header h1 small { font-weight: 400; color: var(--muted); font-size: 13px; margin-left: 8px; }
+
+  main { padding: 28px 32px; max-width: 1400px; margin: 0 auto; }
+  .tabs { display: flex; gap: 4px; border-bottom: 2px solid var(--border); margin-bottom: 24px; }
+  .tab { padding: 12px 22px; background: transparent; border: none; font-size: 14px; font-weight: 600; color: var(--muted); cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--brand); border-bottom-color: var(--brand); }
+
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  @media (max-width: 900px) { .row { grid-template-columns: 1fr; } }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 22px 24px; margin-bottom: 20px; }
+  .card h2 { font-size: 16px; font-weight: 700; margin-bottom: 14px; color: var(--text); }
+  .card .hint { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+
+  label { display: block; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; margin-top: 10px; }
+  input, select, textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; font-family: inherit; background: #fff; color: var(--text); }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--brand); }
+  textarea { min-height: 70px; resize: vertical; }
+  .btn { display: inline-block; padding: 10px 18px; background: var(--brand); color: #fff; border: none; border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer; margin-top: 14px; }
+  .btn:hover { background: var(--brand-light); }
+  .btn.danger { background: transparent; color: var(--red); border: 1px solid rgba(220,38,38,0.3); padding: 4px 10px; font-size: 11px; margin: 0; }
+  .btn.danger:hover { background: rgba(220,38,38,0.08); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { font-size: 11px; text-transform: uppercase; color: var(--muted); font-weight: 700; letter-spacing: 0.5px; background: var(--brand-bg); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .pill.baixa  { background: rgba(22,163,74,0.12); color: var(--green); }
+  .pill.media  { background: rgba(234,88,12,0.12); color: var(--orange); }
+  .pill.alta   { background: rgba(220,38,38,0.12); color: var(--red); }
+
+  .msg { padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-top: 12px; display: none; }
+  .msg.ok { background: rgba(22,163,74,0.10); color: var(--green); border: 1px solid rgba(22,163,74,0.3); }
+  .msg.err { background: rgba(220,38,38,0.10); color: var(--red); border: 1px solid rgba(220,38,38,0.3); }
+  .msg.show { display: block; }
+
+  .taxa-val { font-size: 16px; font-weight: 700; }
+  .taxa-val.bom { color: var(--green); }
+  .taxa-val.medio { color: var(--orange); }
+  .taxa-val.ruim { color: var(--red); }
+
+  .empty { text-align: center; padding: 40px; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+
+<header>
+  <img src="../Logo_Docs.png" alt="Enterplak">
+  <h1>Expedição <small>Controle de qualidade</small></h1>
+</header>
+
+<main>
+  <div class="tabs">
+    <button class="tab active" data-tab="taxa">Taxa mensal</button>
+    <button class="tab" data-tab="enviar">Registrar envios</button>
+    <button class="tab" data-tab="irreg">Registrar irregularidade</button>
+  </div>
+
+  <div class="panel active" id="panel-taxa">
+    <div class="card">
+      <h2 style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+        Variação diária
+        <select id="chartMes" onchange="renderDailyChart()" style="width:auto;font-size:13px;padding:6px 10px"></select>
+      </h2>
+      <p class="hint">Pedidos enviados e irregularidades por dia do mês selecionado.</p>
+      <div style="position:relative;height:300px"><canvas id="dailyChart"></canvas></div>
+    </div>
+    <div class="card">
+      <h2>Taxa de acerto por mês</h2>
+      <p class="hint">(Enviados − irregularidades) ÷ enviados. Quanto maior, melhor.</p>
+      <div id="taxaList"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-enviar">
+    <div class="row">
+      <div class="card">
+        <h2>Adicionar pedidos enviados</h2>
+        <p class="hint">Para a expedição: registre quantos pedidos foram despachados no mês.</p>
+        <form id="formEnvio">
+          <label>Data de referência</label>
+          <input type="date" id="envioMes" required>
+          <label>Quantidade de pedidos enviados</label>
+          <input type="number" id="envioQtd" min="0" step="1" required>
+          <label>Observação (opcional)</label>
+          <textarea id="envioObs" placeholder="Notas internas..."></textarea>
+          <button type="submit" class="btn">Salvar envio</button>
+          <div class="msg" id="envioMsg"></div>
+        </form>
+      </div>
+      <div class="card">
+        <h2>Envios registrados</h2>
+        <div id="envioList"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-irreg">
+    <div class="row">
+      <div class="card">
+        <h2>Reportar irregularidade</h2>
+        <p class="hint">Para o comercial: registre problemas encontrados em pedidos enviados.</p>
+        <form id="formIrreg">
+          <label>Mês de referência</label>
+          <input type="month" id="irregMes" required>
+          <label>Nota Fiscal ou número do pedido</label>
+          <input type="text" id="irregPed" placeholder="NF 0123/26 ou PC 0123/26" required>
+          <label>Severidade</label>
+          <select id="irregSev">
+            <option value="baixa">Baixa</option>
+            <option value="media" selected>Média</option>
+            <option value="alta">Alta</option>
+          </select>
+          <label>Descrição</label>
+          <textarea id="irregDesc" required placeholder="O que aconteceu?"></textarea>
+          <button type="submit" class="btn">Registrar</button>
+          <div class="msg" id="irregMsg"></div>
+        </form>
+      </div>
+      <div class="card">
+        <h2>Irregularidades registradas</h2>
+        <div id="irregList"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+const SUPABASE_URL = 'https://hmkqqxyahevautnmbbdu.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhta3FxeHlhaGV2YXV0bm1iYmR1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMDg0MzMsImV4cCI6MjA5NjY4NDQzM30.LWL-Z_zjlwiR7xWmElc7w1utHE7lPGNZVo7uMlwcdlw';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+function fmtMes(d) { var p = String(d).split('-'); return p[1] + '/' + p[0].slice(2); }
+function fmtDia(d) { var p = String(d).slice(0,10).split('-'); return p[2] + '/' + p[1] + '/' + p[0].slice(2); }
+function mesToISO(m) { return m + '-01'; }
+function isoToMonth(iso) { return String(iso).slice(0, 7); }
+function fmtDate(s) { return new Date(s).toLocaleDateString('pt-BR'); }
+function showMsg(id, txt, cls) { var el = document.getElementById(id); el.textContent = txt; el.className = 'msg show ' + cls; setTimeout(function(){ el.className = 'msg'; }, 4000); }
+
+var now = new Date(), mm = String(now.getMonth()+1).padStart(2,'0');
+// Envio: campo de DATA, abre com ontem
+var ontem = new Date(); ontem.setDate(ontem.getDate() - 1);
+document.getElementById('envioMes').value = ontem.getFullYear() + '-' + String(ontem.getMonth()+1).padStart(2,'0') + '-' + String(ontem.getDate()).padStart(2,'0');
+document.getElementById('irregMes').value = now.getFullYear() + '-' + mm;
+
+document.querySelectorAll('.tab').forEach(function(t) {
+  t.addEventListener('click', function() {
+    document.querySelectorAll('.tab').forEach(function(x) { x.classList.remove('active'); });
+    document.querySelectorAll('.panel').forEach(function(x) { x.classList.remove('active'); });
+    t.classList.add('active');
+    document.getElementById('panel-' + t.dataset.tab).classList.add('active');
+  });
+});
+
+document.getElementById('formEnvio').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  var dia = document.getElementById('envioMes').value; // já é YYYY-MM-DD
+  var qtd = parseInt(document.getElementById('envioQtd').value);
+  var obs = document.getElementById('envioObs').value.trim() || null;
+  var r = await sb.from('expedicao_envios').insert({ mes: dia, quantidade: qtd, observacao: obs });
+  if (r.error) return showMsg('envioMsg', 'Erro: ' + r.error.message, 'err');
+  showMsg('envioMsg', 'Envio registrado.', 'ok');
+  e.target.reset();
+  document.getElementById('envioMes').value = dia;
+  refreshAll();
+});
+
+document.getElementById('formIrreg').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  var mes = mesToISO(document.getElementById('irregMes').value);
+  var ped = document.getElementById('irregPed').value.trim() || null;
+  var sev = document.getElementById('irregSev').value;
+  var desc = document.getElementById('irregDesc').value.trim();
+  var r = await sb.from('expedicao_irregularidades').insert({ mes: mes, pedido_ref: ped, severidade: sev, descricao: desc });
+  if (r.error) return showMsg('irregMsg', 'Erro: ' + r.error.message, 'err');
+  showMsg('irregMsg', 'Irregularidade registrada.', 'ok');
+  e.target.reset();
+  document.getElementById('irregMes').value = isoToMonth(mes);
+  document.getElementById('irregSev').value = 'media';
+  refreshAll();
+});
+
+async function refreshAll() {
+  var [env, irr] = await Promise.all([
+    sb.from('expedicao_envios').select('*').order('mes', { ascending: false }).order('created_at', { ascending: false }),
+    sb.from('expedicao_irregularidades').select('*').order('mes', { ascending: false }).order('created_at', { ascending: false })
+  ]);
+  var envios = env.data || [], irregs = irr.data || [];
+  lastEnvios = envios; lastIrregs = irregs;
+  renderEnvios(envios);
+  renderIrregs(irregs);
+  renderTaxa(envios, irregs);
+  populateChartMonths(envios, irregs);
+  renderDailyChart();
+}
+
+// === Gráfico de variação diária ===
+var lastEnvios = [], lastIrregs = [], dailyChart = null;
+
+function populateChartMonths(envios, irregs) {
+  var sel = document.getElementById('chartMes');
+  var months = new Set();
+  envios.forEach(function(e) { months.add(isoToMonth(e.mes)); });
+  irregs.forEach(function(i) { months.add(isoToMonth(i.mes)); });
+  var arr = Array.from(months).sort().reverse();
+  var current = sel.value || (now.getFullYear() + '-' + mm);
+  sel.innerHTML = arr.map(function(m) {
+    return '<option value="' + m + '"' + (m === current ? ' selected' : '') + '>' + fmtMes(m + '-01') + '</option>';
+  }).join('');
+  if (!sel.value && arr.length) sel.value = arr[0];
+}
+
+window.renderDailyChart = function() {
+  var canvas = document.getElementById('dailyChart');
+  if (!canvas || !window.Chart) return;
+  var month = document.getElementById('chartMes').value;
+  if (!month) return;
+  var p = month.split('-');
+  var diasNoMes = new Date(parseInt(p[0]), parseInt(p[1]), 0).getDate();
+  var labels = [], envPorDia = [], irrPorDia = [];
+  for (var d = 1; d <= diasNoMes; d++) {
+    labels.push(d);
+    envPorDia.push(0);
+    irrPorDia.push(0);
+  }
+  lastEnvios.forEach(function(e) {
+    if (isoToMonth(e.mes) !== month) return;
+    var dia = parseInt(String(e.mes).slice(8, 10)) || 1;
+    envPorDia[dia - 1] += e.quantidade;
+  });
+  lastIrregs.forEach(function(i) {
+    if (isoToMonth(i.mes) !== month) return;
+    var dia = parseInt(String(i.mes).slice(8, 10)) || 1;
+    irrPorDia[dia - 1] += 1;
+  });
+  if (dailyChart) { try { dailyChart.destroy(); } catch(e) {} }
+  dailyChart = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        { label: 'Pedidos enviados', data: envPorDia, borderColor: '#7B1A2C', backgroundColor: 'rgba(123,26,44,0.10)', tension: 0.3, fill: true, pointRadius: 2 },
+        { label: 'Irregularidades', data: irrPorDia, borderColor: '#DC2626', backgroundColor: 'rgba(220,38,38,0.10)', tension: 0.3, fill: false, pointRadius: 2, borderDash: [5,4] }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { position: 'top' } },
+      scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+    }
+  });
+};
+
+function renderEnvios(rows) {
+  var el = document.getElementById('envioList');
+  if (!rows.length) return el.innerHTML = '<div class="empty">Nenhum envio registrado.</div>';
+  var h = '<table><thead><tr><th>Data</th><th class="num">Qtd</th><th>Observação</th><th>Registro</th><th></th></tr></thead><tbody>';
+  rows.forEach(function(r) {
+    h += '<tr><td><strong>' + fmtDia(r.mes) + '</strong></td><td class="num">' + r.quantidade + '</td>'
+      + '<td>' + (r.observacao || '-') + '</td><td>' + fmtDate(r.created_at) + '</td>'
+      + '<td><button class="btn danger" onclick="delEnvio(\'' + r.id + '\')">Apagar</button></td></tr>';
+  });
+  el.innerHTML = h + '</tbody></table>';
+}
+
+function renderIrregs(rows) {
+  var el = document.getElementById('irregList');
+  if (!rows.length) return el.innerHTML = '<div class="empty">Nenhuma irregularidade registrada.</div>';
+  var h = '<table><thead><tr><th>Mês</th><th>Pedido</th><th>Sev.</th><th>Descrição</th><th>Registro</th><th></th></tr></thead><tbody>';
+  rows.forEach(function(r) {
+    h += '<tr><td><strong>' + fmtMes(r.mes) + '</strong></td><td>' + (r.pedido_ref || '-') + '</td>'
+      + '<td><span class="pill ' + r.severidade + '">' + r.severidade + '</span></td>'
+      + '<td>' + r.descricao + '</td><td>' + fmtDate(r.created_at) + '</td>'
+      + '<td><button class="btn danger" onclick="delIrreg(\'' + r.id + '\')">Apagar</button></td></tr>';
+  });
+  el.innerHTML = h + '</tbody></table>';
+}
+
+function renderTaxa(envios, irregs) {
+  var map = {};
+  envios.forEach(function(e) {
+    var k = isoToMonth(e.mes);
+    if (!map[k]) map[k] = { mes: k, enviados: 0, irregularidades: 0 };
+    map[k].enviados += e.quantidade;
+  });
+  irregs.forEach(function(i) {
+    var k = isoToMonth(i.mes);
+    if (!map[k]) map[k] = { mes: k, enviados: 0, irregularidades: 0 };
+    map[k].irregularidades += 1;
+  });
+  var arr = Object.values(map).sort(function(a, b) { return b.mes.localeCompare(a.mes); });
+  var el = document.getElementById('taxaList');
+  if (!arr.length) return el.innerHTML = '<div class="empty">Sem dados ainda.</div>';
+  var h = '<table><thead><tr><th>Mês</th><th class="num">Pedidos enviados</th><th class="num">Irregularidades</th><th class="num">Taxa de acerto</th></tr></thead><tbody>';
+  arr.forEach(function(m) {
+    var taxa = m.enviados > 0 ? ((m.enviados - m.irregularidades) / m.enviados) * 100 : null;
+    var cls = taxa === null ? '' : (taxa >= 98 ? 'bom' : taxa >= 95 ? 'medio' : 'ruim');
+    var txt = taxa === null ? '— (sem envios)' : taxa.toFixed(2) + '%';
+    h += '<tr><td><strong>' + fmtMes(m.mes + '-01') + '</strong></td>'
+      + '<td class="num">' + m.enviados + '</td>'
+      + '<td class="num">' + m.irregularidades + '</td>'
+      + '<td class="num"><span class="taxa-val ' + cls + '">' + txt + '</span></td></tr>';
+  });
+  el.innerHTML = h + '</tbody></table>';
+}
+
+window.delEnvio = async function(id) {
+  if (!confirm('Apagar este envio?')) return;
+  var r = await sb.from('expedicao_envios').delete().eq('id', id);
+  if (r.error) return alert('Erro: ' + r.error.message);
+  refreshAll();
+};
+window.delIrreg = async function(id) {
+  if (!confirm('Apagar esta irregularidade?')) return;
+  var r = await sb.from('expedicao_irregularidades').delete().eq('id', id);
+  if (r.error) return alert('Erro: ' + r.error.message);
+  refreshAll();
+};
+
+refreshAll();
+</script>
+</body>
+</html>

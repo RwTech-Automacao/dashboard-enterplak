@@ -1,0 +1,16 @@
+# Contém e-mails e hashes de senha dos usuários — nunca versionar
+migracao_supabase_novo.sql
+
+# Planilhas de referência com dados internos
+expedicao/ref/
+
+# Imagens originais em alta resolução (backup local)
+_originais/
+
+.claude/settings.local.json
+.vercel
+node_modules/
+
+# Fluxos n8n e schema do Supabase — ficam só localmente (repo é público)
+n8n_*
+*.sql
