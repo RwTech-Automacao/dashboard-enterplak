@@ -1,0 +1,12 @@
+{
+  "name": "dashboard-enterplak",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.109.0",
+    "jose": "^6.2.12"
+  }
+}
