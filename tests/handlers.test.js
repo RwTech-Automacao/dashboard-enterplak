@@ -111,3 +111,52 @@ test('sso: método errado → 405; não configurado → 503', async () => {
     { method: 'POST', headers: {}, body: { next: '/embed/fluxo/P/1' } }, r2)
   assert.equal(r2.statusCode, 503)
 })
+
+test('ops: autorizar lança erro → 503 com mensagem de sessão', async () => {
+  const res = fakeRes()
+  const autorizar = async () => { throw new Error('SUPABASE_URL not set') }
+  let fetchChamou = false
+  const fetchFn = async () => { fetchChamou = true; return { ok: true } }
+  const oldError = console.error
+  console.error = () => {}
+  try {
+    await criarHandlerOps({ autorizar, fetchFn, env })({ method: 'GET', headers: {} }, res)
+    assert.equal(res.statusCode, 503)
+    assert.equal(res.body.erro, 'Não foi possível verificar a sessão agora.')
+    assert.equal(fetchChamou, false)
+  } finally {
+    console.error = oldError
+  }
+})
+
+test('sso: autorizar lança erro → 503 com mensagem de sessão', async () => {
+  const res = fakeRes()
+  const autorizar = async () => { throw new Error('network error') }
+  let assinouChamou = false
+  const assinar = async () => { assinouChamou = true; return 't' }
+  const oldError = console.error
+  console.error = () => {}
+  try {
+    await criarHandlerSso({ autorizar, env, assinar })({ method: 'POST', headers: {}, body: { next: '/embed/fluxo/P/1' } }, res)
+    assert.equal(res.statusCode, 503)
+    assert.equal(res.body.erro, 'Não foi possível verificar a sessão agora.')
+    assert.equal(assinouChamou, false)
+  } finally {
+    console.error = oldError
+  }
+})
+
+test('sso: assinar lança erro → 503 com mensagem de acesso', async () => {
+  const res = fakeRes()
+  const assinar = async () => { throw new Error('key derivation failed') }
+  const oldError = console.error
+  console.error = () => {}
+  try {
+    await criarHandlerSso({ autorizar: autorizado, env, assinar })(
+      { method: 'POST', headers: {}, body: { next: '/embed/fluxo/P/1' } }, res)
+    assert.equal(res.statusCode, 503)
+    assert.equal(res.body.erro, 'Não foi possível gerar o acesso ao ShopFloor agora.')
+  } finally {
+    console.error = oldError
+  }
+})
