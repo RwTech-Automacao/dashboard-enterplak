@@ -845,13 +845,19 @@
         .page-content { display: none; }
         .page-content.active { display: block; }
         /* Abas de OP do ShopFloor (iframe do Fluxo) */
-        #page-shopfloor-op .sf-op-wrap { position: relative; width: 100%; height: calc(100vh - 150px); }
+        /* Altura em px de design (não vh): o auto-scale aplica `zoom` no <html> e vh não escala com ele */
+        #page-shopfloor-op .sf-op-wrap { position: relative; width: 100%; height: 980px; }
         .sf-op-frame { width: 100%; height: 100%; border: 0; border-radius: 16px; background: var(--card); }
         .sf-op-status { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 15px; pointer-events: none; }
         .sf-op-status.hidden { display: none; }
         .sf-op-erro { padding: 48px 16px; text-align: center; color: var(--text); }
         .sf-op-erro p { margin-bottom: 16px; font-size: 16px; }
-        body.fs-mode #page-shopfloor-op .sf-op-wrap { position: fixed; inset: 0; height: 100vh; z-index: 1; }
+        body.fs-mode #page-shopfloor-op .sf-op-wrap { position: fixed; top: 0; left: 0; width: 1920px; height: 1080px; z-index: 1; }
+        /* Em mobile (sem zoom aplicado), volta a usar viewport para caber na tela */
+        @media (max-width: 767px) {
+            #page-shopfloor-op .sf-op-wrap { height: calc(100vh - 150px); }
+            body.fs-mode #page-shopfloor-op .sf-op-wrap { width: 100vw; height: 100vh; }
+        }
 
         /* === CUSTOM PAGE - Fullscreen image ===
            Dimensões fixas no design 1920×1080 (menos 100px da barra de abas).
@@ -2727,7 +2733,7 @@ window.doLogout = async function() {
 function canSeePage(pageId) {
     if (!currentProfile) return false;
     // Aba de OP do ShopFloor: exige a permissão do Fluxo E que a OP ainda esteja na lista
-    if (SF.isOpPageId(pageId)) return canSeePage('shopfloor_fluxo') && !!SF.acharOp(shopfloorOps, pageId);
+    if (window.SF && SF.isOpPageId(pageId)) return canSeePage('shopfloor_fluxo') && !!SF.acharOp(shopfloorOps, pageId);
     if (currentProfile.role === 'admin' || currentProfile.role === 'moderador') return true;
     if (pageId === 'admin') return false; // só admin
     return allowedPageIds ? allowedPageIds.has(pageId) : false;
@@ -3437,7 +3443,7 @@ window.refreshPaginaAtiva = async function() {
             await mktLoadAndRender();
         } else if (activePage === 'admin') {
             await renderAdminPanel();
-        } else if (SF.isOpPageId(activePage)) {
+        } else if (window.SF && SF.isOpPageId(activePage)) {
             await loadShopfloorOps();
             if (sfFrame.op && activePage === sfFrame.opId) sfMountOp(sfFrame.op);
         } else if (activePage && activePage.indexOf('p_') === 0) {
@@ -3670,7 +3676,7 @@ function getPageIds() {
     // Apenas IDs que o usuário atual pode ver
     var ids = ['dashboard', 'logistica', 'almoxarifado', 'faturamento', 'vendas', 'marketing_organico', 'marketing_pago']
         .filter(function(id) { return canSeePage(id); });
-    shopfloorOps.forEach(function(op) {
+    if (window.SF) shopfloorOps.forEach(function(op) {
         var id = SF.opPageId(op);
         if (canSeePage(id)) ids.push(id);
     });
@@ -3749,7 +3755,7 @@ function renderPageTabs() {
     }
 
     var html = fixedTab('dashboard') + fixedTab('logistica') + fixedTab('almoxarifado') + fixedTab('faturamento') + fixedTab('vendas') + fixedTab('marketing_organico') + fixedTab('marketing_pago');
-    shopfloorOps.forEach(function(op) {
+    if (window.SF) shopfloorOps.forEach(function(op) {
         var id = SF.opPageId(op);
         if (!canSeePage(id)) return;
         html += '<button class="ptab' + (activePage === id ? ' active' : '') +
@@ -3804,7 +3810,7 @@ function switchPage(pageId) {
     var pgSf = document.getElementById('page-shopfloor-op');
     if (pgSf) pgSf.classList.remove('active');
     // Saiu da aba de OP: descarta o iframe (não deixa o Fluxo consultando o ShopFloor em segundo plano)
-    if (!SF.isOpPageId(pageId) && sfFrame.opId) sfUnmountOp();
+    if (window.SF && !SF.isOpPageId(pageId) && sfFrame.opId) sfUnmountOp();
     document.getElementById('headerFilters').style.display = pageId === 'dashboard' ? '' : 'none';
 
     if (pageId === 'dashboard') {
@@ -3830,7 +3836,7 @@ function switchPage(pageId) {
     } else if (pageId === 'admin') {
         if (pgAdmin) pgAdmin.classList.add('active');
         renderAdminPanel();
-    } else if (SF.isOpPageId(pageId)) {
+    } else if (window.SF && SF.isOpPageId(pageId)) {
         if (pgSf) pgSf.classList.add('active');
         var opSel = SF.acharOp(shopfloorOps, pageId);
         if (opSel && sfFrame.opId !== pageId) sfMountOp(opSel);
@@ -4137,7 +4143,7 @@ setInterval(syncPagesFromAPI, 5 * 60 * 1000);
 // Cada OP ativa vira uma aba. A lista e o SSO passam pelas funções da Vercel
 // (/api/shopfloor-ops e /api/shopfloor-sso), que conferem login + permissão
 // 'shopfloor_fluxo' e guardam os segredos. Um iframe por vez.
-var SHOPFLOOR_ORIGIN = 'https://shopfloor.enterplak.com.br';
+var shopfloorOrigin = null;    // origem do ShopFloor, informada pelo servidor em /api/shopfloor-ops
 var SF_TIMEOUT_MS = 20000;
 
 async function sfAuthHeaders() {
@@ -4146,6 +4152,7 @@ async function sfAuthHeaders() {
 }
 
 async function loadShopfloorOps() {
+    if (!window.SF) return;
     if (!canSeePage('shopfloor_fluxo')) return;
     try {
         var headers = await sfAuthHeaders();
@@ -4153,6 +4160,8 @@ async function loadShopfloorOps() {
         var resp = await fetch('/api/shopfloor-ops', { headers: headers, cache: 'no-store' });
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         var json = await resp.json();
+        if (typeof json.origin !== 'string' || json.origin.indexOf('https://') !== 0) throw new Error('origem inválida');
+        shopfloorOrigin = json.origin;
         var novas = Array.isArray(json.ops) ? json.ops : [];
         if (SF.mesmasOps(shopfloorOps, novas)) return;
         shopfloorOps = novas;
@@ -4174,12 +4183,13 @@ function sfUnmountOp() {
 function sfMountOp(op) {
     sfUnmountOp();
     var page = document.getElementById('page-shopfloor-op');
+    if (!shopfloorOrigin) { sfFrame.op = op; sfFrame.opId = SF.opPageId(op); sfShowError('sso-falhou'); return; }
     page.innerHTML = '<div class="sf-op-wrap"><div class="sf-op-status" id="sfOpStatus">Carregando fluxo da OP...</div></div>';
     var iframe = document.createElement('iframe');
     iframe.className = 'sf-op-frame';
     iframe.title = SF.opLabel(op);
     iframe.setAttribute('allow', 'fullscreen');
-    iframe.src = SHOPFLOOR_ORIGIN + SF.embedPath(op);
+    iframe.src = shopfloorOrigin + SF.embedPath(op);
     page.querySelector('.sf-op-wrap').appendChild(iframe);
     sfFrame = {
         el: iframe, opId: SF.opPageId(op), op: op, ssoTentado: false,
@@ -4213,7 +4223,13 @@ async function sfFazerSso(alvo) {
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         var json = await resp.json();
         // O usuário pode ter trocado de aba enquanto esperava
-        if (sfFrame === alvo && alvo.el) alvo.el.src = json.url;
+        if (typeof json.url !== 'string' || json.url.indexOf(shopfloorOrigin + '/embed/sso?') !== 0) throw new Error('url de SSO inválida');
+        if (sfFrame === alvo && alvo.el) {
+            alvo.el.src = json.url;
+            // Recomeça o prazo: o SSO consumiu parte dos 20s iniciais
+            if (alvo.timer) clearTimeout(alvo.timer);
+            alvo.timer = setTimeout(function() { sfShowError('timeout'); }, SF_TIMEOUT_MS);
+        }
     } catch (e) {
         console.warn('SSO do ShopFloor falhou:', e.message);
         if (sfFrame === alvo) sfShowError(e.message === 'HTTP 403' ? 'forbidden' : 'sso-falhou');
@@ -4221,10 +4237,11 @@ async function sfFazerSso(alvo) {
 }
 
 window.addEventListener('message', function(ev) {
-    if (ev.origin !== SHOPFLOOR_ORIGIN) return;
+    if (!shopfloorOrigin || ev.origin !== shopfloorOrigin) return;
     if (!sfFrame.el || ev.source !== sfFrame.el.contentWindow) return;
     var d = SF.decidirAcao(ev.data, sfFrame);
     if (d.acao === 'pronto') {
+        sfFrame.ssoTentado = false; // sessão válida: permite novo SSO se ela expirar depois
         if (sfFrame.timer) { clearTimeout(sfFrame.timer); sfFrame.timer = null; }
         var st = document.getElementById('sfOpStatus');
         if (st) st.classList.add('hidden');
