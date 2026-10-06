@@ -6,3 +6,5 @@ _originais/
 .claude/
 docs/
 tests/
+.superpowers/
+node_modules/

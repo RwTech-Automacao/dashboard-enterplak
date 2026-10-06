@@ -22,12 +22,13 @@ export function criarHandlerOps({ autorizar, fetchFn, env }) {
     }
 
     try {
+      const origin = new URL(env.SHOPFLOOR_URL).origin
       const r = await fetchFn(montarUrlOps(env.SHOPFLOOR_URL, env.SHOPFLOOR_OPS_DIAS), {
         headers: { Authorization: 'Bearer ' + env.DASHBOARD_API_SECRET },
         signal: AbortSignal.timeout(10000),
       })
       if (!r.ok) return res.status(502).json({ erro: 'ShopFloor respondeu ' + r.status + '.' })
-      return res.status(200).json({ ops: normalizarOps(await r.json()) })
+      return res.status(200).json({ origin, ops: normalizarOps(await r.json()) })
     } catch (e) {
       console.error('[shopfloor-ops] falha ao consultar o ShopFloor:', e.message)
       return res.status(502).json({ erro: 'ShopFloor indisponível.' })

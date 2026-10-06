@@ -27,7 +27,7 @@ test('ops: repassa a lista normalizada e usa o segredo', async () => {
   const res = fakeRes()
   await criarHandlerOps({ autorizar: autorizado, fetchFn, env })({ method: 'GET', headers: { authorization: 'Bearer t' } }, res)
   assert.equal(res.statusCode, 200)
-  assert.deepEqual(res.body, { ops: [{ pmo: 'P', op: '1/26', cliente: '', descricao: '', ultimoBipe: null }] })
+  assert.deepEqual(res.body, { origin: 'https://shopfloor.enterplak.com.br', ops: [{ pmo: 'P', op: '1/26', cliente: '', descricao: '', ultimoBipe: null }] })
   assert.equal(chamada.url, 'https://shopfloor.enterplak.com.br/api/dashboard/ops-ativas?dias=30')
   assert.equal(chamada.opts.headers.Authorization, 'Bearer api-secret')
   assert.equal(res.headers['Cache-Control'], 'no-store')
@@ -57,7 +57,13 @@ test('ops: ShopFloor com erro HTTP → 502', async () => {
 test('ops: ShopFloor fora do ar → 502', async () => {
   const res = fakeRes()
   const fetchFn = async () => { throw new Error('ECONNREFUSED') }
-  await criarHandlerOps({ autorizar: autorizado, fetchFn, env })({ method: 'GET', headers: {} }, res)
+  const oldError = console.error
+  console.error = () => {}
+  try {
+    await criarHandlerOps({ autorizar: autorizado, fetchFn, env })({ method: 'GET', headers: {} }, res)
+  } finally {
+    console.error = oldError
+  }
   assert.equal(res.statusCode, 502)
 })
 
