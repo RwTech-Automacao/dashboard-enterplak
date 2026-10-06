@@ -14,3 +14,4 @@ node_modules/
 # Fluxos n8n e schema do Supabase — ficam só localmente (repo é público)
 n8n_*
 *.sql
+.superpowers/
