@@ -43,13 +43,20 @@ test('mesmasOps', () => {
 })
 
 test('decidirAcao', () => {
-  assert.deepEqual(plain(SF.decidirAcao({ type: 'sf-embed:ready' }, { ssoTentado: false })), { acao: 'pronto' })
-  assert.deepEqual(plain(SF.decidirAcao({ type: 'sf-embed:login-required' }, { ssoTentado: false })), { acao: 'sso' })
-  assert.deepEqual(plain(SF.decidirAcao({ type: 'sf-embed:login-required' }, { ssoTentado: true })), { acao: 'erro', codigo: 'sso-falhou' })
-  assert.deepEqual(plain(SF.decidirAcao({ type: 'sf-embed:error', code: 'inactive' }, { ssoTentado: false })), { acao: 'erro', codigo: 'inactive' })
-  assert.deepEqual(plain(SF.decidirAcao({ type: 'sf-embed:error' }, { ssoTentado: false })), { acao: 'erro', codigo: 'desconhecido' })
+  assert.deepEqual(plain(SF.decidirAcao({ type: 'sf-embed:ready' }, { ssoTentativas: 0 })), { acao: 'pronto' })
+  assert.deepEqual(plain(SF.decidirAcao({ type: 'sf-embed:login-required' }, { ssoTentativas: 0 })), { acao: 'sso' })
+  assert.deepEqual(plain(SF.decidirAcao({ type: 'sf-embed:login-required' }, { ssoTentativas: 1 })), { acao: 'sso' })
+  assert.deepEqual(plain(SF.decidirAcao({ type: 'sf-embed:login-required' }, { ssoTentativas: 2 })), { acao: 'erro', codigo: 'sso-falhou' })
+  assert.deepEqual(plain(SF.decidirAcao({ type: 'sf-embed:error', code: 'inactive' }, { ssoTentativas: 0 })), { acao: 'erro', codigo: 'inactive' })
+  assert.deepEqual(plain(SF.decidirAcao({ type: 'sf-embed:error' }, { ssoTentativas: 0 })), { acao: 'erro', codigo: 'desconhecido' })
   assert.deepEqual(plain(SF.decidirAcao({ type: 'outra' }, {})), { acao: 'ignorar' })
   assert.deepEqual(plain(SF.decidirAcao('texto', {})), { acao: 'ignorar' })
+})
+
+test('decidirAcao: expirado (token vencido ou já usado) pede token novo, até 2 tentativas por carga', () => {
+  assert.deepEqual(plain(SF.decidirAcao({ type: 'sf-embed:error', code: 'expirado' }, { ssoTentativas: 1 })), { acao: 'sso' })
+  assert.deepEqual(plain(SF.decidirAcao({ type: 'sf-embed:error', code: 'expirado' }, { ssoTentativas: 2 })), { acao: 'erro', codigo: 'sso-falhou' })
+  assert.deepEqual(plain(SF.decidirAcao({ type: 'sf-embed:error', code: 'expirado' }, undefined)), { acao: 'sso' })
 })
 
 test('mensagemErro', () => {

@@ -2627,7 +2627,7 @@ var currentProfile = null;     // { role, full_name }
 var allowedPageIds = null;     // Set<string> ou null (se admin/moderador: todas)
 var shopfloorOps = [];         // OPs ativas do ShopFloor (abas dinâmicas), vindas de /api/shopfloor-ops
 // Iframe da aba de OP aberta. Declarado aqui (e não na seção ShopFloor) porque switchPage o lê.
-var sfFrame = { el: null, opId: null, op: null, ssoTentado: false, timer: null };
+var sfFrame = { el: null, opId: null, op: null, ssoTentativas: 0, timer: null };
 
 // --- Auth: login ---
 async function doSupabaseLogin(email, password) {
@@ -4177,7 +4177,7 @@ function sfUnmountOp() {
     if (sfFrame.timer) clearTimeout(sfFrame.timer);
     var page = document.getElementById('page-shopfloor-op');
     if (page) page.innerHTML = '';
-    sfFrame = { el: null, opId: null, op: null, ssoTentado: false, timer: null };
+    sfFrame = { el: null, opId: null, op: null, ssoTentativas: 0, timer: null };
 }
 
 function sfMountOp(op) {
@@ -4192,7 +4192,7 @@ function sfMountOp(op) {
     iframe.src = shopfloorOrigin + SF.embedPath(op);
     page.querySelector('.sf-op-wrap').appendChild(iframe);
     sfFrame = {
-        el: iframe, opId: SF.opPageId(op), op: op, ssoTentado: false,
+        el: iframe, opId: SF.opPageId(op), op: op, ssoTentativas: 0,
         timer: setTimeout(function() { sfShowError('timeout'); }, SF_TIMEOUT_MS)
     };
 }
@@ -4211,7 +4211,7 @@ window.sfRetry = function() {
 };
 
 async function sfFazerSso(alvo) {
-    alvo.ssoTentado = true;
+    alvo.ssoTentativas++;
     try {
         var headers = await sfAuthHeaders();
         if (!headers) throw new Error('sem sessão');
@@ -4241,7 +4241,7 @@ window.addEventListener('message', function(ev) {
     if (!sfFrame.el || ev.source !== sfFrame.el.contentWindow) return;
     var d = SF.decidirAcao(ev.data, sfFrame);
     if (d.acao === 'pronto') {
-        sfFrame.ssoTentado = false; // sessão válida: permite novo SSO se ela expirar depois
+        sfFrame.ssoTentativas = 0; // sessão válida: permite novo SSO se ela expirar depois
         if (sfFrame.timer) { clearTimeout(sfFrame.timer); sfFrame.timer = null; }
         var st = document.getElementById('sfOpStatus');
         if (st) st.classList.add('hidden');

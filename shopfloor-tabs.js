@@ -39,12 +39,19 @@
         return true;
     }
 
+    // Até 2 SSOs por carga do iframe: o 2º cobre o token que o ShopFloor queimou sem abrir sessão
+    // (o jti é gasto antes do GoTrue). Mais que isso é falha de verdade, não loop.
+    var MAX_SSO = 2;
+
     function decidirAcao(msg, estado) {
         if (!msg || typeof msg.type !== 'string') return { acao: 'ignorar' };
         if (msg.type === 'sf-embed:ready') return { acao: 'pronto' };
-        if (msg.type === 'sf-embed:login-required') {
-            // Uma tentativa de SSO por carga: se o ShopFloor pedir login de novo, é falha, não loop.
-            return estado && estado.ssoTentado ? { acao: 'erro', codigo: 'sso-falhou' } : { acao: 'sso' };
+        // 'expirado' = token vencido ou já usado: é caso de assinar outro, não de mostrar erro
+        var pedeSso = msg.type === 'sf-embed:login-required' ||
+            (msg.type === 'sf-embed:error' && msg.code === 'expirado');
+        if (pedeSso) {
+            var tentativas = (estado && estado.ssoTentativas) || 0;
+            return tentativas < MAX_SSO ? { acao: 'sso' } : { acao: 'erro', codigo: 'sso-falhou' };
         }
         if (msg.type === 'sf-embed:error') return { acao: 'erro', codigo: msg.code || 'desconhecido' };
         return { acao: 'ignorar' };
