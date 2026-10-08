@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { extrairBearer, podeVerFluxo, autorizarUsuario, PERMISSAO_FLUXO } from '../api/_lib/auth.js'
+import { extrairBearer, podeVerFluxo, podeVerAlguma, autorizarUsuario, PERMISSAO_FLUXO } from '../api/_lib/auth.js'
 
 function fakeCliente({ user = { id: 'u1' }, perfil = { role: 'usuario', active: true }, perms = [], erroUser = false, erroPerms = false } = {}) {
   return {
@@ -78,4 +78,22 @@ test('autorizarUsuario: erro ao ler permissões → 503', async () => {
 test('autorizarUsuario: usuário desativado → 403', async () => {
   const r = await autorizarUsuario('Bearer t', { criarCliente: () => fakeCliente({ perfil: { role: 'admin', active: false } }) })
   assert.equal(r.status, 403)
+})
+
+test('podeVerAlguma: basta uma das páginas exigidas', () => {
+  const u = { role: 'usuario', active: true }
+  assert.equal(podeVerAlguma(u, ['vendas'], ['faturamento', 'vendas']), true)
+  assert.equal(podeVerAlguma(u, ['faturamento'], ['faturamento', 'vendas']), true)
+  assert.equal(podeVerAlguma(u, ['logistica'], ['faturamento', 'vendas']), false)
+  assert.equal(podeVerAlguma({ role: 'moderador', active: true }, [], ['faturamento']), true)
+  assert.equal(podeVerAlguma({ role: 'admin', active: false }, [], ['faturamento']), false)
+  assert.equal(podeVerAlguma(null, ['faturamento'], ['faturamento']), false)
+})
+
+test('autorizarUsuario: páginas exigidas e mensagem configuráveis', async () => {
+  const opts = { paginasExigidas: ['faturamento', 'vendas'], erroSemPermissao: 'Sem permissão para Produção/Vendas.' }
+  const ok = await autorizarUsuario('Bearer t', { criarCliente: () => fakeCliente({ perms: ['vendas'] }), ...opts })
+  assert.deepEqual(ok, { ok: true, userId: 'u1' })
+  const negado = await autorizarUsuario('Bearer t', { criarCliente: () => fakeCliente({ perms: ['shopfloor_fluxo'] }), ...opts })
+  assert.deepEqual(negado, { ok: false, status: 403, erro: 'Sem permissão para Produção/Vendas.' })
 })

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { criarHandlerOps, criarHandlerSso } from '../api/_lib/handlers.js'
+import { criarHandlerOps, criarHandlerSso, criarHandlerFaturamento } from '../api/_lib/handlers.js'
 
 function fakeRes() {
   const r = { statusCode: 0, headers: {}, body: undefined }
@@ -17,6 +17,83 @@ const env = {
   DASHBOARD_SSO_SECRET: 'sso-secret',
   SHOPFLOOR_OPS_DIAS: '30',
 }
+
+const envKanban = { KANBAN_URL: 'https://kanbanpro.enterplak.com.br', KANBAN_DASHBOARD_TOKEN: 'kb-secret' }
+const respostaKanban = {
+  entregas: [{ pedido: 'P', acp: 'ACP1/26', clienteId: 'c1', cliente: 'ALFA', produtoDescricao: 'D', quantidade: 10, data: '2026-09-30', valorEstimadoBRL: 100 }],
+  notas: [{ pedido: 'P', acp: 'ACP1/26', clienteId: 'c1', cliente: 'ALFA', produtoDescricao: 'D', quantidade: 5, data: '2026-09-11', cambio: 5.1654, numeroNF: 1, valorBRL: 50 }],
+  vendas: [{ pedido: 'OMT', acp: null, clienteId: 'c2', cliente: 'G', valor: 10, moeda: 'BRL', dataAprovacao: '2026-07-02', dataAprovacaoOrigem: 'evento' }],
+}
+const reqFat = (query) => ({ method: 'GET', headers: { authorization: 'Bearer t' }, query })
+const silenciarErro = async (fn) => {
+  const original = console.error
+  console.error = () => {}
+  try { return await fn() } finally { console.error = original }
+}
+
+test('faturamento: chama o Kanban com o intervalo do trimestre e devolve as linhas', async () => {
+  let chamada
+  const fetchFn = async (url, opts) => { chamada = { url, opts }; return { ok: true, status: 200, json: async () => respostaKanban } }
+  const res = fakeRes()
+  await criarHandlerFaturamento({ autorizar: autorizado, fetchFn, env: envKanban })(
+    reqFat({ mes: 'setembro/26', mes2: 'julho/26', mes3: 'agosto/26' }), res)
+  assert.equal(res.statusCode, 200)
+  assert.equal(chamada.url, 'https://kanbanpro.enterplak.com.br/api/integracoes/dashboard/faturamento?de=2026-07&ate=2026-09')
+  assert.equal(chamada.opts.headers.Authorization, 'Bearer kb-secret')
+  assert.ok(Array.isArray(res.body))
+  assert.deepEqual(res.body.map((r) => r._source), ['previsto', 'realizado', 'vendas'])
+  assert.equal(res.headers['Cache-Control'], 'no-store')
+})
+
+test('faturamento: só GET', async () => {
+  const res = fakeRes()
+  await criarHandlerFaturamento({ autorizar: autorizado, fetchFn: async () => {}, env: envKanban })({ method: 'POST', headers: {}, query: {} }, res)
+  assert.equal(res.statusCode, 405)
+})
+
+test('faturamento: sem permissão não consulta o Kanban', async () => {
+  let chamou = false
+  const res = fakeRes()
+  await criarHandlerFaturamento({ autorizar: negado, fetchFn: async () => { chamou = true }, env: envKanban })(reqFat({ mes: 'setembro/26' }), res)
+  assert.equal(res.statusCode, 403)
+  assert.equal(chamou, false)
+})
+
+test('faturamento: falha ao verificar sessão → 503', async () => {
+  const res = fakeRes()
+  await silenciarErro(() => criarHandlerFaturamento({ autorizar: async () => { throw new Error('x') }, fetchFn: async () => {}, env: envKanban })(reqFat({ mes: 'setembro/26' }), res))
+  assert.equal(res.statusCode, 503)
+  assert.equal(res.body.erro, 'Não foi possível verificar a sessão agora.')
+})
+
+test('faturamento: mês ausente ou inválido → 400', async () => {
+  for (const query of [{}, { mes: 'setembro' }, { mes: 'setembro/26', mes2: 'xx/26' }]) {
+    const res = fakeRes()
+    await criarHandlerFaturamento({ autorizar: autorizado, fetchFn: async () => {}, env: envKanban })(reqFat(query), res)
+    assert.equal(res.statusCode, 400, JSON.stringify(query))
+  }
+})
+
+test('faturamento: sem configuração → 503', async () => {
+  const res = fakeRes()
+  await criarHandlerFaturamento({ autorizar: autorizado, fetchFn: async () => {}, env: {} })(reqFat({ mes: 'setembro/26' }), res)
+  assert.equal(res.statusCode, 503)
+  assert.equal(res.body.erro, 'Integração com o Kanban não configurada.')
+})
+
+test('faturamento: Kanban com erro HTTP → 502 com o status', async () => {
+  const res = fakeRes()
+  await criarHandlerFaturamento({ autorizar: autorizado, fetchFn: async () => ({ ok: false, status: 401 }), env: envKanban })(reqFat({ mes: 'setembro/26' }), res)
+  assert.equal(res.statusCode, 502)
+  assert.equal(res.body.erro, 'Kanban respondeu 401.')
+})
+
+test('faturamento: Kanban fora do ar → 502', async () => {
+  const res = fakeRes()
+  await silenciarErro(() => criarHandlerFaturamento({ autorizar: autorizado, fetchFn: async () => { throw new Error('ECONNREFUSED') }, env: envKanban })(reqFat({ mes: 'setembro/26' }), res))
+  assert.equal(res.statusCode, 502)
+  assert.equal(res.body.erro, 'Kanban indisponível.')
+})
 
 test('ops: repassa a lista normalizada e usa o segredo', async () => {
   let chamada

@@ -1,5 +1,6 @@
 import { montarUrlOps, normalizarOps } from './ops.js'
 import { nextValido, assinarTokenSso, montarUrlSso } from './sso.js'
+import { parseMesParam, intervaloDeMeses, converterKanban } from './faturamento.js'
 
 const EMAIL_PADRAO = 'dashboard@enterplak.com.br'
 
@@ -63,6 +64,48 @@ export function criarHandlerSso({ autorizar, env, assinar = assinarTokenSso }) {
     } catch (e) {
       console.error('[shopfloor-sso] falha ao gerar o acesso:', e.message)
       return res.status(503).json({ erro: 'Não foi possível gerar o acesso ao ShopFloor agora.' })
+    }
+  }
+}
+
+export function criarHandlerFaturamento({ autorizar, fetchFn, env }) {
+  return async function handler(req, res) {
+    res.setHeader('Cache-Control', 'no-store')
+    if (req.method !== 'GET') return res.status(405).json({ erro: 'Método não permitido.' })
+
+    let a
+    try {
+      a = await autorizar(req.headers.authorization)
+    } catch (e) {
+      console.error('[faturamento] falha ao verificar a sessão:', e.message)
+      return res.status(503).json({ erro: 'Não foi possível verificar a sessão agora.' })
+    }
+    if (!a.ok) return res.status(a.status).json({ erro: a.erro })
+
+    const query = req.query || {}
+    const alvo = parseMesParam(query.mes)
+    const extras = [query.mes2, query.mes3].filter((m) => m !== undefined && m !== '')
+    const outros = extras.map(parseMesParam)
+    if (!alvo || outros.some((m) => !m)) return res.status(400).json({ erro: 'Mês inválido.' })
+
+    if (!env.KANBAN_URL || !env.KANBAN_DASHBOARD_TOKEN) {
+      return res.status(503).json({ erro: 'Integração com o Kanban não configurada.' })
+    }
+
+    try {
+      const { de, ate } = intervaloDeMeses([alvo, ...outros])
+      const url = new URL('/api/integracoes/dashboard/faturamento', env.KANBAN_URL)
+      url.searchParams.set('de', de)
+      url.searchParams.set('ate', ate)
+      const r = await fetchFn(url.toString(), {
+        headers: { Authorization: 'Bearer ' + env.KANBAN_DASHBOARD_TOKEN },
+        signal: AbortSignal.timeout(15000),
+      })
+      if (!r.ok) return res.status(502).json({ erro: 'Kanban respondeu ' + r.status + '.' })
+      return res.status(200).json(converterKanban(await r.json(), alvo))
+    } catch (e) {
+      console.error('[faturamento] falha ao consultar o Kanban:', e.message)
+      return res.status(502).json({ erro: 'Kanban indisponível.' })
     }
   }
 }

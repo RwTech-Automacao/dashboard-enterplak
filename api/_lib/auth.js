@@ -8,18 +8,26 @@ export function extrairBearer(valor) {
   return m ? m[1] : null
 }
 
-export function podeVerFluxo(perfil, paginas) {
+export function podeVerAlguma(perfil, paginas, exigidas) {
   if (!perfil || perfil.active === false) return false
   if (perfil.role === 'admin' || perfil.role === 'moderador') return true
-  return Array.isArray(paginas) && paginas.includes(PERMISSAO_FLUXO)
+  return Array.isArray(paginas) && exigidas.some((p) => paginas.includes(p))
+}
+
+export function podeVerFluxo(perfil, paginas) {
+  return podeVerAlguma(perfil, paginas, [PERMISSAO_FLUXO])
 }
 
 /**
- * Confere a sessão do dashboard (Supabase do dashboard) e a permissão do Fluxo.
+ * Confere a sessão do dashboard (Supabase do dashboard) e a permissão exigida (por padrão, a do Fluxo ShopFloor).
  * As consultas usam o token do PRÓPRIO usuário: o RLS já permite ler o próprio perfil e
  * as próprias permissões, então nenhuma chave de serviço é necessária.
  */
-export async function autorizarUsuario(authorization, { criarCliente }) {
+export async function autorizarUsuario(authorization, {
+  criarCliente,
+  paginasExigidas = [PERMISSAO_FLUXO],
+  erroSemPermissao = 'Sem permissão para o Fluxo ShopFloor.',
+}) {
   const token = extrairBearer(authorization)
   if (!token) return { ok: false, status: 401, erro: 'Sessão ausente.' }
 
@@ -38,7 +46,7 @@ export async function autorizarUsuario(authorization, { criarCliente }) {
     paginas = (perms || []).map((p) => p.page_id)
   }
 
-  if (!podeVerFluxo(perfil, paginas)) return { ok: false, status: 403, erro: 'Sem permissão para o Fluxo ShopFloor.' }
+  if (!podeVerAlguma(perfil, paginas, paginasExigidas)) return { ok: false, status: 403, erro: erroSemPermissao }
   return { ok: true, userId }
 }
 
