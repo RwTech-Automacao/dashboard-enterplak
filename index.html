@@ -1679,6 +1679,14 @@
             font-weight: 700;
             color: var(--text);
         }
+        .fat-proj-nome {
+            display: inline-block;
+            max-width: 260px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            vertical-align: bottom;
+        }
         .fat-proj-values {
             font-size: 12px;
             color: var(--text-muted);
@@ -4710,7 +4718,8 @@ function updateLogisticaCountdowns() {
 // ============================================
 
 // Webhook de Faturamento (produção)
-const FATURAMENTO_WEBHOOK = N8N_BASE + '/webhook/4cb6950a-eab2-4819-9467-4af2e16b5fac';
+// Produção e Vendas: dados do Kanban PRO via função da Vercel (antes: planilha pelo n8n).
+const FATURAMENTO_WEBHOOK = '/api/faturamento';
 
 // Estado da página de faturamento
 var faturamentoData = null;
@@ -4787,10 +4796,16 @@ async function loadFaturamento(mesParam) {
         if (outros[0]) url += '&mes2=' + encodeURIComponent(outros[0]);
         if (outros[1]) url += '&mes3=' + encodeURIComponent(outros[1]);
 
-        var response = await fetch(url, { cache: 'no-store' });
-        if (!response.ok) throw new Error('HTTP ' + response.status);
+        var headers = await sfAuthHeaders();
+        if (!headers) throw new Error('Sessão expirada. Faça login novamente.');
+        var response = await fetch(url, { cache: 'no-store', headers: headers });
+        if (!response.ok) {
+            var msgErro = 'HTTP ' + response.status;
+            try { var corpoErro = await response.json(); if (corpoErro && corpoErro.erro) msgErro = corpoErro.erro; } catch (e) {}
+            throw new Error(msgErro);
+        }
         var text = await response.text();
-        if (!text || text.trim() === '') throw new Error('Webhook retornou vazio. Verifique o nó "Respond to Webhook" no n8n.');
+        if (!text || text.trim() === '') throw new Error('O servidor respondeu vazio.');
         var data = JSON.parse(text);
         if (data.code !== undefined && data.message) throw new Error(data.message);
         faturamentoRawData = Array.isArray(data) ? data : [data];
@@ -4852,10 +4867,17 @@ function parseNum(val) {
     return isNaN(n) ? 0 : n;
 }
 
+// Nomes de cliente vêm do cadastro do Kanban (texto livre): sempre escapar antes de pôr no HTML.
+function escHtml(s) {
+    return String(s === null || s === undefined ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 // Converte resposta do webhook para o formato interno
 // Cada projeto agora tem 4 valores:
 //   - metaProducao  = Qtde planejada (Plan entregas)
-//   - producao      = Qtde Embalada  (Faturamento)
+//   - producao      = Qtde Faturada (notas do Kanban)
 //   - metaFaturamento = Total fat. Estimado (Plan entregas)
 //   - faturado      = Valor total (Faturamento)
 function parseFaturamentoData(raw) {
@@ -4887,7 +4909,8 @@ function parseFaturamentoData(raw) {
                 if (qtdePlan > 0) getOrInit(cliente).metaProducao += qtdePlan;
                 if (totalEst > 0) getOrInit(cliente).metaFaturamento += totalEst;
             } else if (src === 'realizado') {
-                var embalada = parseNum(row['Qtde Embalada']);
+                // Kanban: produção realizada = quantidade faturada no mês (a planilha usava "Qtde Embalada", nunca preenchida)
+                var embalada = parseNum(row['Qtde Faturada']);
                 var valorTotal = parseNum(row['Valor total']);
                 if (embalada > 0) getOrInit(cliente).producao += embalada;
                 if (valorTotal > 0) getOrInit(cliente).faturado += valorTotal;
@@ -4979,7 +5002,7 @@ function renderFaturamento() {
     html += '<div style="margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;gap:24px;flex-wrap:wrap">';
     html += '<div>';
     html += '<h1 style="font-size:42px;font-weight:700;color:var(--text);margin-bottom:6px">Produ&ccedil;&atilde;o e Faturamento</h1>';
-    html += '<p style="font-size:21px;color:var(--text-muted)">Produ&ccedil;&atilde;o (qtde embalada) vs planejado &mdash; com % faturado real</p>';
+    html += '<p style="font-size:21px;color:var(--text-muted)">Produ&ccedil;&atilde;o (qtde faturada) vs planejado &mdash; com % faturado real</p>';
     html += '</div>';
     html += '<div style="display:flex;align-items:center;gap:14px">';
     html += '<img src="Logo_Docs.png" alt="Enterplak" style="height:60px;width:auto;opacity:0.7">';
@@ -5178,7 +5201,7 @@ function renderFaturamentoBody() {
     if (faturamentoData.error) {
         var errHtml = '<div class="fat-main-card" style="border:1px solid rgba(220,38,38,0.3)">';
         errHtml += '<div style="color:var(--red);font-size:16px;font-weight:600;margin-bottom:8px">Erro ao carregar dados</div>';
-        errHtml += '<div style="color:var(--text-muted);font-size:13px;margin-bottom:16px">' + faturamentoData.error + '</div>';
+        errHtml += '<div style="color:var(--text-muted);font-size:13px;margin-bottom:16px">' + escHtml(faturamentoData.error) + '</div>';
         errHtml += '<div style="font-size:12px;color:var(--text-muted);word-break:break-all">Endpoint: <code style="background:rgba(0,0,0,0.05);padding:2px 6px;border-radius:4px;font-size:11px">' + FATURAMENTO_WEBHOOK + '?mes=' + encodeURIComponent(faturamentoMesAtual) + '</code></div>';
         errHtml += '<button class="btn-refresh" onclick="loadFaturamento(faturamentoMesAtual)" style="margin-top:12px">Tentar novamente</button>';
         errHtml += '</div>';
@@ -5204,7 +5227,7 @@ function renderFaturamentoBody() {
     var pctMetaHoje = diasUteisMes > 0 ? (diasUteisHoje / diasUteisMes) * 100 : 0;
 
     var data = faturamentoData;
-    // M\u00e9trica principal: PRODU\u00c7\u00c3O (Qtde Embalada vs Qtde Planejada)
+    // M\u00e9trica principal: PRODU\u00c7\u00c3O (Qtde Faturada vs Qtde Planejada)
     var pctProducao = data.metaProducao > 0 ? (data.producao / data.metaProducao) * 100 : 0;
     var metaHojeValor = diasUteisMes > 0 ? (data.metaProducao / diasUteisMes) * diasUteisHoje : 0;
     var aheadGeral = data.producao >= metaHojeValor;
@@ -5242,7 +5265,7 @@ function renderFaturamentoBody() {
 
     // GrÃ¡fico de evoluÃ§Ã£o do faturamento (acumulado % ao longo do mÃªs, atÃ© hoje)
     var tituloGraficoFat = faturamentoProjetoSelecionado
-        ? 'Evolu&ccedil;&atilde;o do Faturamento - ' + faturamentoProjetoSelecionado
+        ? 'Evolu&ccedil;&atilde;o do Faturamento - ' + escHtml(faturamentoProjetoSelecionado)
         : 'Evolu&ccedil;&atilde;o do Faturamento no M&ecirc;s';
     html += '<div class="chart-card" style="margin-bottom:24px"><h3>' + tituloGraficoFat + '</h3><div class="chart-container" style="height:320px"><canvas id="faturamentoTimelineChart"></canvas></div></div>';
     setTimeout(renderFaturamentoTimelineChart, 50);
@@ -5260,9 +5283,10 @@ function renderFaturamentoBody() {
         var pctFatProj = proj.metaFaturamento > 0 ? (proj.faturado / proj.metaFaturamento) * 100 : 0;
 
         var cardClass = 'fat-project-card is-clickable' + (faturamentoProjetoSelecionado === proj.nome ? ' selected' : '');
-        html += '<div class="' + cardClass + '" onclick="selecionarProjetoFaturamento(decodeURIComponent(\'' + encodeURIComponent(proj.nome) + '\'))">';
+        html += '<div class="' + cardClass + '" onclick="selecionarProjetoFaturamento(decodeURIComponent(\'' + encodeURIComponent(proj.nome).replace(/'/g, '%27') + '\'))">';
         html += '<div class="fat-proj-header">';
-        html += '<div class="fat-proj-name">' + proj.nome;
+        var nomeProjEsc = escHtml(proj.nome);
+        html += '<div class="fat-proj-name"><span class="fat-proj-nome" title="' + nomeProjEsc + '">' + nomeProjEsc + '</span>';
         html += '<span class="fat-status-badge ' + (aheadProj ? 'ahead' : 'behind') + '">' + (aheadProj ? 'NO PRAZO' : 'ATRASADO') + '</span>';
         html += '</div>';
         html += '<div class="fat-proj-values"><strong>' + pctProj.toFixed(1) + '%</strong> produzido</div>';
@@ -5333,7 +5357,7 @@ function renderVendasBody() {
     if (faturamentoData.error) {
         var errHtml = '<div class="fat-main-card" style="border:1px solid rgba(220,38,38,0.3)">';
         errHtml += '<div style="color:var(--red);font-size:16px;font-weight:600;margin-bottom:8px">Erro ao carregar dados</div>';
-        errHtml += '<div style="color:var(--text-muted);font-size:13px;margin-bottom:16px">' + faturamentoData.error + '</div>';
+        errHtml += '<div style="color:var(--text-muted);font-size:13px;margin-bottom:16px">' + escHtml(faturamentoData.error) + '</div>';
         errHtml += '<button class="btn-refresh" onclick="loadFaturamento(faturamentoMesAtual)" style="margin-top:12px">Tentar novamente</button>';
         errHtml += '</div>';
         return errHtml;
