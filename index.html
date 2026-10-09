@@ -873,6 +873,9 @@
         .sf-op-frame { width: 100%; height: 100%; border: 0; border-radius: 16px; background: var(--card); }
         .sf-op-status { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 15px; pointer-events: none; }
         .sf-op-status.hidden { display: none; }
+        /* OP nova carrega invisível por cima da anterior; só aparece quando o ShopFloor avisa "pronto"
+           (evita mostrar o carregamento e os controles de zoom antes de o Fluxo montar) */
+        .sf-op-frame--carregando { position: absolute; inset: 0; opacity: 0; pointer-events: none; }
         .sf-op-erro { padding: 48px 16px; text-align: center; color: var(--text); }
         .sf-op-erro p { margin-bottom: 16px; font-size: 16px; }
         body.fs-mode #page-shopfloor-op .sf-op-wrap { position: fixed; top: 0; left: 0; width: 1920px; height: 1080px; z-index: 1; }
@@ -4254,23 +4257,46 @@ function sfUnmountOp() {
 }
 
 function sfMountOp(op) {
-    sfUnmountOp();
+    if (sfFrame.timer) clearTimeout(sfFrame.timer);
     var page = document.getElementById('page-shopfloor-op');
-    if (!shopfloorOrigin) { sfFrame.op = op; sfFrame.opId = SF.opPageId(op); sfShowError('sso-falhou'); return; }
-    page.innerHTML = '<div class="sf-op-wrap"><div class="sf-op-status" id="sfOpStatus">Carregando fluxo da OP...</div></div>';
+    if (!shopfloorOrigin) { sfUnmountOp(); sfFrame.op = op; sfFrame.opId = SF.opPageId(op); sfShowError('sso-falhou'); return; }
+    // Troca sem "piscar": a OP que está na tela fica visível até a nova avisar "pronto".
+    var wrap = page.querySelector('.sf-op-wrap');
+    // "anterior" é a OP VISÍVEL agora: a última que ficou pronta, ou a que ainda segura a tela
+    // enquanto outra carrega (trocas rápidas em sequência).
+    var anterior = null;
+    if (wrap) {
+        if (sfFrame.el && wrap.contains(sfFrame.el) && !sfFrame.el.classList.contains('sf-op-frame--carregando')) anterior = sfFrame.el;
+        else if (sfFrame.anterior && wrap.contains(sfFrame.anterior)) anterior = sfFrame.anterior;
+        // Fica só a visível: qualquer outra (carregamento que não terminou) é descartada
+        wrap.querySelectorAll('iframe').forEach(function(f) { if (f !== anterior) f.remove(); });
+    } else {
+        page.innerHTML = '<div class="sf-op-wrap"><div class="sf-op-status" id="sfOpStatus">Carregando fluxo da OP...</div></div>';
+        wrap = page.querySelector('.sf-op-wrap');
+    }
+    var st = document.getElementById('sfOpStatus');
+    if (st) st.classList.toggle('hidden', !!anterior); // o "Carregando" só aparece quando não há nada na tela
     var iframe = document.createElement('iframe');
-    iframe.className = 'sf-op-frame';
+    iframe.className = 'sf-op-frame sf-op-frame--carregando';
     iframe.title = SF.opLabel(op);
     iframe.setAttribute('allow', 'fullscreen');
     var tv = !!document.fullscreenElement; // em tela cheia o Fluxo já abre em Modo TV
     iframe.src = shopfloorOrigin + SF.embedPath(op, tv);
-    page.querySelector('.sf-op-wrap').appendChild(iframe);
+    wrap.appendChild(iframe);
     sfFrame = {
-        el: iframe, opId: SF.opPageId(op), op: op, tv: tv, ssoTentativas: 0,
+        el: iframe, anterior: anterior, opId: SF.opPageId(op), op: op, tv: tv, ssoTentativas: 0,
         timer: setTimeout(function() { sfShowError('timeout'); }, SF_TIMEOUT_MS)
     };
 }
 
+// O ShopFloor avisou "pronto": mostra a OP nova e descarta a anterior
+function sfRevelarOp() {
+    if (sfFrame.el) sfFrame.el.classList.remove('sf-op-frame--carregando');
+    if (sfFrame.anterior && sfFrame.anterior !== sfFrame.el) sfFrame.anterior.remove();
+    sfFrame.anterior = null;
+    var st = document.getElementById('sfOpStatus');
+    if (st) st.classList.add('hidden');
+}
 function sfShowError(codigo) {
     if (sfFrame.timer) { clearTimeout(sfFrame.timer); sfFrame.timer = null; }
     sfFrame.el = null; // mantém op/opId para o "Tentar novamente"
@@ -4317,8 +4343,7 @@ window.addEventListener('message', function(ev) {
     if (d.acao === 'pronto') {
         sfFrame.ssoTentativas = 0; // sessão válida: permite novo SSO se ela expirar depois
         if (sfFrame.timer) { clearTimeout(sfFrame.timer); sfFrame.timer = null; }
-        var st = document.getElementById('sfOpStatus');
-        if (st) st.classList.add('hidden');
+        sfRevelarOp();
     } else if (d.acao === 'sso') {
         sfFazerSso(sfFrame);
     } else if (d.acao === 'erro') {
