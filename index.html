@@ -758,6 +758,8 @@
             overflow-x: auto;
             flex: 1;
             position: relative; /* referência do offsetLeft das abas (rolagem até a aba ativa) */
+            scrollbar-width: none;      /* Firefox: sem barra de rolagem (rola por setas e roda do mouse) */
+            -ms-overflow-style: none;
         }
         .page-bar-tabs::-webkit-scrollbar { height: 0; }
         /* Setas para rolar a barra de abas quando há muitas (ex.: abas de OP) */
