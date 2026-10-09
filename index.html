@@ -757,8 +757,24 @@
             align-items: stretch;
             overflow-x: auto;
             flex: 1;
+            position: relative; /* referência do offsetLeft das abas (rolagem até a aba ativa) */
         }
         .page-bar-tabs::-webkit-scrollbar { height: 0; }
+        /* Setas para rolar a barra de abas quando há muitas (ex.: abas de OP) */
+        .ptab-scroll {
+            padding: 0 8px;
+            font-size: 16px;
+            line-height: 1;
+            color: var(--text-muted);
+            cursor: pointer;
+            border: none;
+            background: none;
+            display: flex;
+            align-items: center;
+        }
+        #ptabNext { border-right: 1px solid var(--card-border); }
+        .ptab-scroll:hover:not(:disabled) { color: var(--brand); background: var(--brand-bg-hover); }
+        .ptab-scroll:disabled { opacity: 0.3; cursor: default; }
         .ptab {
             padding: 0 18px;
             font-size: 11px;
@@ -2553,6 +2569,8 @@
 
 <!-- Bottom Page Bar (Looker Studio style) -->
 <div class="page-bar">
+    <button class="ptab-scroll" id="ptabPrev" onclick="rolarAbas(-1)" title="Rolar abas para a esquerda">&lsaquo;</button>
+    <button class="ptab-scroll" id="ptabNext" onclick="rolarAbas(1)" title="Rolar abas para a direita">&rsaquo;</button>
     <div class="page-bar-tabs" id="pageTabs"></div>
     <button class="ptab-add" onclick="addPage()" title="Adicionar p&aacute;gina">+</button>
     <div class="page-bar-right">
@@ -3791,7 +3809,47 @@ function renderPageTabs() {
     }
 
     c.innerHTML = html;
+    mostrarAbaAtiva(c);
+    atualizarSetasAbas();
 }
+
+// --- Rolagem da barra de abas (setas e roda do mouse) ---
+// Rola só a barra; não troca de aba.
+function rolarAbas(direcao) {
+    var c = document.getElementById('pageTabs');
+    if (!c) return;
+    c.scrollBy({ left: direcao * Math.max(120, c.clientWidth * 0.8), behavior: 'smooth' });
+}
+
+function atualizarSetasAbas() {
+    var c = document.getElementById('pageTabs');
+    var prev = document.getElementById('ptabPrev');
+    var next = document.getElementById('ptabNext');
+    if (!c || !prev || !next) return;
+    prev.disabled = c.scrollLeft <= 0;
+    next.disabled = c.scrollLeft + c.clientWidth >= c.scrollWidth - 1;
+}
+
+// Garante que a aba ativa fique visível (ex.: rotação automática chegando numa aba de OP fora da vista)
+function mostrarAbaAtiva(c) {
+    var a = c.querySelector('.ptab.active');
+    if (!a) return;
+    if (a.offsetLeft < c.scrollLeft) c.scrollLeft = a.offsetLeft;
+    else if (a.offsetLeft + a.offsetWidth > c.scrollLeft + c.clientWidth) c.scrollLeft = a.offsetLeft + a.offsetWidth - c.clientWidth;
+}
+
+(function() {
+    var c = document.getElementById('pageTabs');
+    if (!c) return;
+    c.addEventListener('wheel', function(e) {
+        var delta = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+        if (!delta || c.scrollWidth <= c.clientWidth) return;
+        e.preventDefault();
+        c.scrollLeft += delta;
+    }, { passive: false });
+    c.addEventListener('scroll', atualizarSetasAbas);
+    window.addEventListener('resize', atualizarSetasAbas);
+})();
 
 // --- Switch page ---
 function switchPage(pageId) {
