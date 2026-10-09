@@ -2580,7 +2580,7 @@
     <div class="page-bar-right">
         <span>Auto</span>
         <div class="rot-toggle" id="rotationToggle" onclick="toggleRotation()"></div>
-        <input type="number" class="rot-input" id="rotationTime" value="30" min="5" max="300" onchange="updateRotationTime()">
+        <input type="number" class="rot-input" id="rotationTime" value="15" min="5" max="300" onchange="updateRotationTime()">
         <span>s</span>
     </div>
 </div>
@@ -3560,7 +3560,7 @@ var activePage = 'dashboard';
 var customPages = []; // { id, name, imageUrl, sourceType }
 var rotationActive = false;
 var rotationTimer = null;
-var rotationSeconds = 30;
+var rotationSeconds = 15; // tempo padrão de cada tela na rotação automática
 
 // --- Supabase: páginas customizadas (storage para imagem, tabela "pages" para metadata) ---
 const STORAGE_BUCKET = 'dashboard-pages';
@@ -4185,7 +4185,7 @@ function toggleRotation() {
     rotationActive ? startRotation() : stopRotation();
 }
 function updateRotationTime() {
-    var v = parseInt(document.getElementById('rotationTime').value) || 30;
+    var v = parseInt(document.getElementById('rotationTime').value) || 15;
     v = Math.max(5, Math.min(300, v));
     rotationSeconds = v;
     document.getElementById('rotationTime').value = v;
