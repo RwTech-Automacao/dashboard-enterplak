@@ -21,7 +21,9 @@
 
     function opLabel(op) { return 'OP ' + op.op; }
     function opTitle(op) { return [op.cliente, op.descricao].filter(Boolean).join(' — '); }
-    function embedPath(op) { return '/embed/fluxo/' + enc(op.pmo) + '/' + enc(op.op); }
+    // tv = true quando o dashboard está em tela cheia: o ShopFloor abre o Fluxo já no layout de
+    // apresentação, sem pedir a tela cheia do navegador (ela é do dashboard).
+    function embedPath(op, tv) { return '/embed/fluxo/' + enc(op.pmo) + '/' + enc(op.op) + (tv ? '?modo=tv' : ''); }
 
     function escapeHtml(s) {
         if (s === null || s === undefined) return '';

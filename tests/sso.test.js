@@ -6,6 +6,7 @@ import { nextValido, assinarTokenSso, montarUrlSso, SSO_ISSUER, SSO_AUDIENCE, SS
 test('nextValido aceita caminhos /embed/ e codificação da OP', () => {
   assert.equal(nextValido('/embed/fluxo/PMOC13/2340%2F26'), true)
   assert.equal(nextValido('/embed/fluxo/x/y'), true)
+  assert.equal(nextValido('/embed/fluxo/PMOG14/8559?modo=tv'), true)
 })
 
 test('nextValido recusa destinos perigosos ou fora de /embed/', () => {

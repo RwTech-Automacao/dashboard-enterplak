@@ -18,6 +18,8 @@ test('ids e caminhos', () => {
   assert.equal(SF.isOpPageId('dashboard'), false)
   assert.equal(SF.isOpPageId(undefined), false)
   assert.equal(SF.embedPath(op), '/embed/fluxo/PMOC13/2340%2F26')
+  assert.equal(SF.embedPath(op, false), '/embed/fluxo/PMOC13/2340%2F26')
+  assert.equal(SF.embedPath(op, true), '/embed/fluxo/PMOC13/2340%2F26?modo=tv')
 })
 
 test('acharOp', () => {

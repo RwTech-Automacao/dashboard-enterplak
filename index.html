@@ -4200,10 +4200,11 @@ function sfMountOp(op) {
     iframe.className = 'sf-op-frame';
     iframe.title = SF.opLabel(op);
     iframe.setAttribute('allow', 'fullscreen');
-    iframe.src = shopfloorOrigin + SF.embedPath(op);
+    var tv = !!document.fullscreenElement; // em tela cheia o Fluxo já abre em Modo TV
+    iframe.src = shopfloorOrigin + SF.embedPath(op, tv);
     page.querySelector('.sf-op-wrap').appendChild(iframe);
     sfFrame = {
-        el: iframe, opId: SF.opPageId(op), op: op, ssoTentativas: 0,
+        el: iframe, opId: SF.opPageId(op), op: op, tv: tv, ssoTentativas: 0,
         timer: setTimeout(function() { sfShowError('timeout'); }, SF_TIMEOUT_MS)
     };
 }
@@ -4229,7 +4230,7 @@ async function sfFazerSso(alvo) {
         headers['Content-Type'] = 'application/json';
         var resp = await fetch('/api/shopfloor-sso', {
             method: 'POST', headers: headers, cache: 'no-store',
-            body: JSON.stringify({ next: SF.embedPath(alvo.op) })
+            body: JSON.stringify({ next: SF.embedPath(alvo.op, alvo.tv) })
         });
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         var json = await resp.json();
@@ -4264,6 +4265,13 @@ window.addEventListener('message', function(ev) {
 });
 
 setInterval(loadShopfloorOps, 5 * 60 * 1000);
+
+// Entrou ou saiu da tela cheia com uma OP aberta: recarrega o Fluxo no modo certo
+// (com ou sem ?modo=tv). A tela cheia é só do dashboard; o ShopFloor só muda a aparência.
+document.addEventListener('fullscreenchange', function() {
+    if (!window.SF || !SF.isOpPageId(activePage) || !sfFrame.op) return;
+    if (sfFrame.tv !== !!document.fullscreenElement) sfMountOp(sfFrame.op);
+});
 
 // ============================================
 // === PÁGINA DE LOGÍSTICA (lista de embarques)
