@@ -6613,7 +6613,7 @@ async function renderAlmoxarifado() {
         +         almPresetBtn('90d', '90 dias')
         +         almPresetBtn('mes_atual',     'Mês atual')
         +         almPresetBtn('mes_anterior',  'Mês anterior')
-        +         almPresetBtn('ano',           'Ano ' + new Date().getFullYear())
+        +         almPresetBtn('ano',           String(new Date().getFullYear()))
         +         '<input type="date" id="almStart" value="' + almState.startDate + '">'
         +         '<input type="date" id="almEnd" value="'   + almState.endDate   + '">'
         +         '<button class="alm-apply" onclick="almApplyCustom()">Aplicar</button>'
