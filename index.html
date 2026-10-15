@@ -12,6 +12,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="shopfloor-tabs.js"></script>
+    <script src="almoxarifado-ano.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -6549,6 +6550,9 @@ function almApplyPreset(preset) {
         start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
         end   = new Date(today.getFullYear(), today.getMonth(), 0);
     }
+    else if (preset === 'ano') {
+        start = new Date(today.getFullYear(), 0, 1); // acumulado do ano: 01/01 até hoje
+    }
     almState.startDate = almFormatDate(start);
     almState.endDate   = almFormatDate(end);
     almState.activePreset = preset;
@@ -6603,6 +6607,7 @@ async function renderAlmoxarifado() {
         +         almPresetBtn('90d', '90 dias')
         +         almPresetBtn('mes_atual',     'Mês atual')
         +         almPresetBtn('mes_anterior',  'Mês anterior')
+        +         almPresetBtn('ano',           'Ano ' + new Date().getFullYear())
         +         '<input type="date" id="almStart" value="' + almState.startDate + '">'
         +         '<input type="date" id="almEnd" value="'   + almState.endDate   + '">'
         +         '<button class="alm-apply" onclick="almApplyCustom()">Aplicar</button>'
@@ -6642,6 +6647,21 @@ async function almLoadAndRender() {
                 + 'Configure o fluxo no n8n para retornar o JSON no schema esperado (current, previous, period, disparidades).</div>';
             return;
         }
+        if (almState.activePreset === 'ano' && window.ALM) {
+            // Acumulado do ano: os totais vêm da consulta acima; o gráfico é mês a mês, com o
+            // resumo exato de cada mês (uma consulta por mês, em paralelo).
+            body.innerHTML = '<div class="alm-loading">Montando o resumo m&ecirc;s a m&ecirc;s...</div>';
+            var meses = ALM.mesesDoAno(almState.endDate);
+            var mensais = await Promise.all(meses.map(function(m) {
+                var u = ALM_WEBHOOK + '?startDate=' + m.inicio + '&endDate=' + m.fim;
+                if (almState.estoque) u += '&estoque=' + encodeURIComponent(almState.estoque);
+                return fetch(u, { cache: 'no-store' })
+                    .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+                    .then(function(j) { return ALM.pontoMensal(m.mes, j && j.current); });
+            }));
+            data.timeSeries = mensais;
+            data.modoAno = true;
+        }
         almState.data = data;
         // Popula dropdown de estoques (mantém seleção atual)
         var sel = document.getElementById('almEstoque');
@@ -6666,9 +6686,11 @@ function almRenderBody(data) {
     var itens = cur.itens || {};
     var pecas = cur.pecas || {};
     var valor = cur.valor || {};
-    var pItens = prev.itens || {};
-    var pPecas = prev.pecas || {};
-    var pValor = prev.valor || {};
+    // No "Ano" não há período anterior para comparar (a planilha é só do ano corrente)
+    var pItens = data.modoAno ? {} : (prev.itens || {});
+    var pPecas = data.modoAno ? {} : (prev.pecas || {});
+    var pValor = data.modoAno ? {} : (prev.valor || {});
+    var tituloEvolucao = data.modoAno ? 'Evolu&ccedil;&atilde;o m&ecirc;s a m&ecirc;s' : 'Evolu&ccedil;&atilde;o';
 
     // Meta proporcional ao período
     var days = data.period && data.period.days
@@ -6700,7 +6722,7 @@ function almRenderBody(data) {
                        variant: itens.acuracidadePct >= 95 ? 'green' : (itens.acuracidadePct >= 80 ? 'orange' : 'red'),
                        cur: itens.acuracidadePct, prev: pItens.acuracidadePct })
         + '</div>'
-        + '<div class="alm-chart-card"><h4>Evolução — Itens (SKUs)</h4><div class="alm-chart-wrap"><canvas id="almChartItens"></canvas></div></div>'
+        + '<div class="alm-chart-card"><h4>' + tituloEvolucao + ' — Itens (SKUs)</h4><div class="alm-chart-wrap"><canvas id="almChartItens"></canvas></div></div>'
 
         // ============ SEÇÃO PEÇAS ============
         + '<div class="alm-section-title pecas"><span class="alm-section-dot"></span>Peças (quantidade)</div>'
@@ -6721,7 +6743,7 @@ function almRenderBody(data) {
                        variant: (pecas.acuracidadePct >= 99 && pecas.acuracidadePct <= 101) ? 'green' : ((pecas.acuracidadePct >= 95 && pecas.acuracidadePct <= 105) ? 'orange' : 'red'),
                        cur: pecas.acuracidadePct, prev: pPecas.acuracidadePct })
         + '</div>'
-        + '<div class="alm-chart-card"><h4>Evolução — Peças</h4><div class="alm-chart-wrap"><canvas id="almChartPecas"></canvas></div></div>'
+        + '<div class="alm-chart-card"><h4>' + tituloEvolucao + ' — Peças</h4><div class="alm-chart-wrap"><canvas id="almChartPecas"></canvas></div></div>'
 
         // ============ SEÇÃO VALOR ============
         + '<div class="alm-section-title valor"><span class="alm-section-dot"></span>Valor (R$)</div>'
@@ -6742,7 +6764,7 @@ function almRenderBody(data) {
                        variant: (valor.acuracidadePct >= 99 && valor.acuracidadePct <= 101) ? 'green' : ((valor.acuracidadePct >= 95 && valor.acuracidadePct <= 105) ? 'orange' : 'red'),
                        cur: valor.acuracidadePct, prev: pValor.acuracidadePct })
         + '</div>'
-        + '<div class="alm-chart-card"><h4>Evolução — Valor (R$)</h4><div class="alm-chart-wrap"><canvas id="almChartValor"></canvas></div></div>';
+        + '<div class="alm-chart-card"><h4>' + tituloEvolucao + ' — Valor (R$)</h4><div class="alm-chart-wrap"><canvas id="almChartValor"></canvas></div></div>';
 
     body.innerHTML = html;
 
@@ -6760,6 +6782,7 @@ function almRenderBody(data) {
 // ============================================================
 function almDateLabel(d) {
     var s = String(d || '');
+    if (/^\d{4}-\d{2}$/.test(s) && window.ALM) return ALM.rotuloMes(s); // ponto mensal (visão "Ano")
     if (s.indexOf('-') !== -1) { var p = s.split('-'); return p[2] + '/' + p[1]; }
     if (s.length === 8) return s.slice(6,8) + '/' + s.slice(4,6);
     return s;
