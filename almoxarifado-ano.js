@@ -42,5 +42,14 @@
         };
     }
 
-    global.ALM = { mesesDoAno: mesesDoAno, rotuloMes: rotuloMes, pontoMensal: pontoMensal };
+    // Série do gráfico a partir do resumo mensal que o n8n devolve (campo "mensal").
+    // Sem o campo (n8n ainda não atualizado) devolve null.
+    function serieMensal(meses, mensal) {
+        if (!Array.isArray(mensal)) return null;
+        var porMes = {};
+        mensal.forEach(function (m) { if (m && m.mes) porMes[m.mes] = m; });
+        return meses.map(function (m) { return pontoMensal(m.mes, porMes[m.mes] || null); });
+    }
+
+    global.ALM = { mesesDoAno: mesesDoAno, rotuloMes: rotuloMes, pontoMensal: pontoMensal, serieMensal: serieMensal };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -46,3 +46,19 @@ test('pontoMensal com mês vazio ou resposta incompleta vira zeros', () => {
   assert.equal(p.itensContados, 0)
   assert.equal(p.valorAcuracidadePct, 0)
 })
+
+test('serieMensal: um ponto por mês do ano, com zeros nos meses sem contagem', () => {
+  const meses = ALM.mesesDoAno('2026-03-10')
+  const mensal = [
+    { mes: '2026-01', itens: { contados: 140, acuracidadePct: 75 }, pecas: {}, valor: {} },
+    { mes: '2026-03', itens: { contados: 144, acuracidadePct: 81.3 }, pecas: {}, valor: {} },
+  ]
+  const s = plain(ALM.serieMensal(meses, mensal))
+  assert.deepEqual(s.map((p) => p.date), ['2026-01', '2026-02', '2026-03'])
+  assert.deepEqual(s.map((p) => p.itensContados), [140, 0, 144])
+  assert.equal(s[2].itensAcuracidadePct, 81.3)
+})
+
+test('serieMensal sem resumo mensal devolve null (n8n ainda sem o campo)', () => {
+  assert.equal(ALM.serieMensal(ALM.mesesDoAno('2026-03-10'), undefined), null)
+})

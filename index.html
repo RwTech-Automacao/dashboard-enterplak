@@ -1984,6 +1984,12 @@
         .alm-kpi.purple::before { background: linear-gradient(90deg, #7C3AED, #A855F7); }
 
         /* Gráficos de linha por seção */
+        /* Tabela mês a mês da visão "Ano" */
+        .alm-ano-tabela { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .alm-ano-tabela th, .alm-ano-tabela td { padding: 8px 10px; text-align: right; border-bottom: 1px solid var(--card-border); white-space: nowrap; }
+        .alm-ano-tabela th:first-child, .alm-ano-tabela td:first-child { text-align: left; }
+        .alm-ano-tabela th { font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; }
+        .alm-ano-tabela tr.total td { font-weight: 700; border-top: 2px solid var(--card-border); border-bottom: none; }
         .alm-chart-card {
             background: var(--card); border: 1px solid var(--card-border);
             border-radius: 12px; padding: 18px 22px; margin-bottom: 24px;
@@ -6648,19 +6654,12 @@ async function almLoadAndRender() {
             return;
         }
         if (almState.activePreset === 'ano' && window.ALM) {
-            // Acumulado do ano: os totais vêm da consulta acima; o gráfico é mês a mês, com o
-            // resumo exato de cada mês (uma consulta por mês, em paralelo).
-            body.innerHTML = '<div class="alm-loading">Montando o resumo m&ecirc;s a m&ecirc;s...</div>';
-            var meses = ALM.mesesDoAno(almState.endDate);
-            var mensais = await Promise.all(meses.map(function(m) {
-                var u = ALM_WEBHOOK + '?startDate=' + m.inicio + '&endDate=' + m.fim;
-                if (almState.estoque) u += '&estoque=' + encodeURIComponent(almState.estoque);
-                return fetch(u, { cache: 'no-store' })
-                    .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-                    .then(function(j) { return ALM.pontoMensal(m.mes, j && j.current); });
-            }));
-            data.timeSeries = mensais;
+            // Acumulado do ano: totais da consulta acima; gráfico mês a mês com o resumo mensal
+            // que o n8n devolve no campo "mensal". Sem o campo, fica o gráfico por dia.
+            var serie = ALM.serieMensal(ALM.mesesDoAno(almState.endDate), data.mensal);
+            if (serie) data.timeSeries = serie;
             data.modoAno = true;
+            data.modoAnoMensal = !!serie;
         }
         almState.data = data;
         // Popula dropdown de estoques (mantém seleção atual)
@@ -6690,7 +6689,7 @@ function almRenderBody(data) {
     var pItens = data.modoAno ? {} : (prev.itens || {});
     var pPecas = data.modoAno ? {} : (prev.pecas || {});
     var pValor = data.modoAno ? {} : (prev.valor || {});
-    var tituloEvolucao = data.modoAno ? 'Evolu&ccedil;&atilde;o m&ecirc;s a m&ecirc;s' : 'Evolu&ccedil;&atilde;o';
+    var tituloEvolucao = data.modoAnoMensal ? 'Evolu&ccedil;&atilde;o m&ecirc;s a m&ecirc;s' : 'Evolu&ccedil;&atilde;o';
 
     // Meta proporcional ao período
     var days = data.period && data.period.days
@@ -6764,7 +6763,8 @@ function almRenderBody(data) {
                        variant: (valor.acuracidadePct >= 99 && valor.acuracidadePct <= 101) ? 'green' : ((valor.acuracidadePct >= 95 && valor.acuracidadePct <= 105) ? 'orange' : 'red'),
                        cur: valor.acuracidadePct, prev: pValor.acuracidadePct })
         + '</div>'
-        + '<div class="alm-chart-card"><h4>' + tituloEvolucao + ' — Valor (R$)</h4><div class="alm-chart-wrap"><canvas id="almChartValor"></canvas></div></div>';
+        + '<div class="alm-chart-card"><h4>' + tituloEvolucao + ' — Valor (R$)</h4><div class="alm-chart-wrap"><canvas id="almChartValor"></canvas></div></div>'
+        + (data.modoAnoMensal ? almTabelaAno(data.timeSeries, itens, pecas, valor) : '');
 
     body.innerHTML = html;
 
@@ -6775,6 +6775,32 @@ function almRenderBody(data) {
         almRenderChartPecas(ts);
         almRenderChartValor(ts);
     }, 0);
+}
+
+// Tabela mês a mês da visão "Ano". A linha Total usa os totais do ano (soma direta),
+// nunca a média das acuracidades mensais.
+function almTabelaAno(ts, itens, pecas, valor) {
+    var h = '<div class="alm-chart-card"><h4>M&ecirc;s a m&ecirc;s</h4><div style="overflow-x:auto"><table class="alm-ano-tabela">'
+        + '<thead><tr><th>M&ecirc;s</th><th>Itens contados</th><th>Div. +</th><th>Div. &minus;</th>'
+        + '<th>Acur. itens</th><th>Acur. pe&ccedil;as</th><th>Acur. valor</th></tr></thead><tbody>';
+    ts.forEach(function(d) {
+        var vazio = !d.itensContados;
+        h += '<tr><td>' + almDateLabel(d.date) + '</td>'
+            + '<td>' + almNumberBR(d.itensContados) + '</td>'
+            + '<td>' + almNumberBR(d.itensDivPositiva) + '</td>'
+            + '<td>' + almNumberBR(d.itensDivNegativa) + '</td>'
+            + '<td>' + (vazio ? '&ndash;' : almPctBR(d.itensAcuracidadePct, 1)) + '</td>'
+            + '<td>' + (vazio ? '&ndash;' : almPctBR(d.pecasAcuracidadePct, 2)) + '</td>'
+            + '<td>' + (vazio ? '&ndash;' : almPctBR(d.valorAcuracidadePct, 2)) + '</td></tr>';
+    });
+    h += '<tr class="total"><td>Total do ano</td>'
+        + '<td>' + almNumberBR(itens.contados) + '</td>'
+        + '<td>' + almNumberBR(itens.divPositiva) + '</td>'
+        + '<td>' + almNumberBR(itens.divNegativa) + '</td>'
+        + '<td>' + almPctBR(itens.acuracidadePct, 1) + '</td>'
+        + '<td>' + almPctBR(pecas.acuracidadePct, 2) + '</td>'
+        + '<td>' + almPctBR(valor.acuracidadePct, 2) + '</td></tr>';
+    return h + '</tbody></table></div></div>';
 }
 
 // ============================================================
