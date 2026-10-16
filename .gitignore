@@ -15,3 +15,7 @@ node_modules/
 n8n_*
 *.sql
 .superpowers/
+
+# Exports de fluxos do n8n e documentos soltos (têm endereços de planilhas internas)
+DASHBOARD ENTERPLAK.json
+*.odt
