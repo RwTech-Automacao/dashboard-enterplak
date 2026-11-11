@@ -99,7 +99,7 @@
         Variação diária
         <select id="chartMes" onchange="renderDailyChart()" style="width:auto;font-size:13px;padding:6px 10px"></select>
       </h2>
-      <p class="hint">Pedidos enviados e irregularidades por dia do mês selecionado.</p>
+      <p class="hint">Pedidos enviados, volumes e irregularidades por dia do mês selecionado.</p>
       <div style="position:relative;height:300px"><canvas id="dailyChart"></canvas></div>
     </div>
     <div class="card">
@@ -119,6 +119,8 @@
           <input type="date" id="envioMes" required>
           <label>Quantidade de pedidos enviados</label>
           <input type="number" id="envioQtd" min="0" step="1" required>
+          <label>Quantidade de volumes</label>
+          <input type="number" id="envioVol" min="0" step="1" placeholder="Caixas / embalagens despachadas">
           <label>Observação (opcional)</label>
           <textarea id="envioObs" placeholder="Notas internas..."></textarea>
           <button type="submit" class="btn">Salvar envio</button>
@@ -193,8 +195,10 @@ document.getElementById('formEnvio').addEventListener('submit', async function(e
   e.preventDefault();
   var dia = document.getElementById('envioMes').value; // já é YYYY-MM-DD
   var qtd = parseInt(document.getElementById('envioQtd').value);
+  var volTxt = document.getElementById('envioVol').value;
+  var vol = volTxt === '' ? null : parseInt(volTxt); // opcional: envios antigos não têm volume
   var obs = document.getElementById('envioObs').value.trim() || null;
-  var r = await sb.from('expedicao_envios').insert({ mes: dia, quantidade: qtd, observacao: obs });
+  var r = await sb.from('expedicao_envios').insert({ mes: dia, quantidade: qtd, volumes: vol, observacao: obs });
   if (r.error) return showMsg('envioMsg', 'Erro: ' + r.error.message, 'err');
   showMsg('envioMsg', 'Envio registrado.', 'ok');
   e.target.reset();
@@ -254,16 +258,18 @@ window.renderDailyChart = function() {
   if (!month) return;
   var p = month.split('-');
   var diasNoMes = new Date(parseInt(p[0]), parseInt(p[1]), 0).getDate();
-  var labels = [], envPorDia = [], irrPorDia = [];
+  var labels = [], envPorDia = [], volPorDia = [], irrPorDia = [];
   for (var d = 1; d <= diasNoMes; d++) {
     labels.push(d);
     envPorDia.push(0);
+    volPorDia.push(0);
     irrPorDia.push(0);
   }
   lastEnvios.forEach(function(e) {
     if (isoToMonth(e.mes) !== month) return;
     var dia = parseInt(String(e.mes).slice(8, 10)) || 1;
     envPorDia[dia - 1] += e.quantidade;
+    volPorDia[dia - 1] += e.volumes || 0;
   });
   lastIrregs.forEach(function(i) {
     if (isoToMonth(i.mes) !== month) return;
@@ -277,6 +283,7 @@ window.renderDailyChart = function() {
       labels: labels,
       datasets: [
         { label: 'Pedidos enviados', data: envPorDia, borderColor: '#7B1A2C', backgroundColor: 'rgba(123,26,44,0.10)', tension: 0.3, fill: true, pointRadius: 2 },
+        { label: 'Volumes', data: volPorDia, borderColor: '#2563EB', backgroundColor: 'rgba(37,99,235,0.10)', tension: 0.3, fill: false, pointRadius: 2 },
         { label: 'Irregularidades', data: irrPorDia, borderColor: '#DC2626', backgroundColor: 'rgba(220,38,38,0.10)', tension: 0.3, fill: false, pointRadius: 2, borderDash: [5,4] }
       ]
     },
@@ -292,9 +299,10 @@ window.renderDailyChart = function() {
 function renderEnvios(rows) {
   var el = document.getElementById('envioList');
   if (!rows.length) return el.innerHTML = '<div class="empty">Nenhum envio registrado.</div>';
-  var h = '<table><thead><tr><th>Data</th><th class="num">Qtd</th><th>Observação</th><th>Registro</th><th></th></tr></thead><tbody>';
+  var h = '<table><thead><tr><th>Data</th><th class="num">Qtd</th><th class="num">Volumes</th><th>Observação</th><th>Registro</th><th></th></tr></thead><tbody>';
   rows.forEach(function(r) {
     h += '<tr><td><strong>' + fmtDia(r.mes) + '</strong></td><td class="num">' + r.quantidade + '</td>'
+      + '<td class="num">' + (r.volumes == null ? '-' : r.volumes) + '</td>'
       + '<td>' + (r.observacao || '-') + '</td><td>' + fmtDate(r.created_at) + '</td>'
       + '<td><button class="btn danger" onclick="delEnvio(\'' + r.id + '\')">Apagar</button></td></tr>';
   });
@@ -318,24 +326,26 @@ function renderTaxa(envios, irregs) {
   var map = {};
   envios.forEach(function(e) {
     var k = isoToMonth(e.mes);
-    if (!map[k]) map[k] = { mes: k, enviados: 0, irregularidades: 0 };
+    if (!map[k]) map[k] = { mes: k, enviados: 0, volumes: 0, irregularidades: 0 };
     map[k].enviados += e.quantidade;
+    map[k].volumes += e.volumes || 0;
   });
   irregs.forEach(function(i) {
     var k = isoToMonth(i.mes);
-    if (!map[k]) map[k] = { mes: k, enviados: 0, irregularidades: 0 };
+    if (!map[k]) map[k] = { mes: k, enviados: 0, volumes: 0, irregularidades: 0 };
     map[k].irregularidades += 1;
   });
   var arr = Object.values(map).sort(function(a, b) { return b.mes.localeCompare(a.mes); });
   var el = document.getElementById('taxaList');
   if (!arr.length) return el.innerHTML = '<div class="empty">Sem dados ainda.</div>';
-  var h = '<table><thead><tr><th>Mês</th><th class="num">Pedidos enviados</th><th class="num">Irregularidades</th><th class="num">Taxa de acerto</th></tr></thead><tbody>';
+  var h = '<table><thead><tr><th>Mês</th><th class="num">Pedidos enviados</th><th class="num">Volumes</th><th class="num">Irregularidades</th><th class="num">Taxa de acerto</th></tr></thead><tbody>';
   arr.forEach(function(m) {
     var taxa = m.enviados > 0 ? ((m.enviados - m.irregularidades) / m.enviados) * 100 : null;
     var cls = taxa === null ? '' : (taxa >= 98 ? 'bom' : taxa >= 95 ? 'medio' : 'ruim');
     var txt = taxa === null ? '— (sem envios)' : taxa.toFixed(2) + '%';
     h += '<tr><td><strong>' + fmtMes(m.mes + '-01') + '</strong></td>'
       + '<td class="num">' + m.enviados + '</td>'
+      + '<td class="num">' + (m.volumes || '-') + '</td>'
       + '<td class="num">' + m.irregularidades + '</td>'
       + '<td class="num"><span class="taxa-val ' + cls + '">' + txt + '</span></td></tr>';
   });
