@@ -13,6 +13,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="shopfloor-tabs.js"></script>
     <script src="almoxarifado-ano.js"></script>
+    <script src="ajuda-contas.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -245,6 +246,66 @@
             align-items: center;
         }
         .btn-theme:hover { background: rgba(255,255,255,0.1); }
+
+        /* Botão "?" e painel "Como calculamos" */
+        .btn-ajuda {
+            width: 32px; height: 32px; padding: 0;
+            border: 1px solid rgba(255,255,255,0.25);
+            background: transparent;
+            color: rgba(255,255,255,0.85);
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 16px; font-weight: 700; line-height: 1;
+            transition: all 0.2s;
+            display: inline-flex; align-items: center; justify-content: center;
+        }
+        .btn-ajuda:hover, .btn-ajuda.ativo { background: var(--brand); color: #fff; }
+        .ajuda-overlay {
+            position: fixed; inset: 0; background: rgba(15,8,12,0.35);
+            z-index: 9990; display: none;
+        }
+        .ajuda-overlay.show { display: block; }
+        .ajuda-painel {
+            position: fixed; top: 0; right: 0; bottom: 0;
+            width: min(520px, 100vw);
+            background: var(--bg); color: var(--text);
+            border-left: 1px solid var(--card-border);
+            box-shadow: -12px 0 40px rgba(0,0,0,0.25);
+            z-index: 9991; display: flex; flex-direction: column;
+            transform: translateX(100%); transition: transform 0.25s ease;
+        }
+        .ajuda-painel.show { transform: translateX(0); }
+        .ajuda-head {
+            display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
+            padding: 20px 24px 14px; border-bottom: 1px solid var(--brand-bg);
+        }
+        .ajuda-head h3 { font-size: 18px; font-weight: 700; color: var(--brand); }
+        [data-theme="dark"] .ajuda-head h3 { color: var(--text); }
+        .ajuda-head .ajuda-sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+        .ajuda-fechar {
+            background: transparent; border: none; font-size: 28px; line-height: 1;
+            color: var(--text-muted); cursor: pointer; width: 32px; height: 32px; border-radius: 8px;
+        }
+        .ajuda-fechar:hover { background: var(--brand-bg); color: var(--text); }
+        .ajuda-corpo { padding: 16px 24px 32px; overflow-y: auto; flex: 1; font-size: 13px; line-height: 1.55; }
+        .ajuda-filtro {
+            background: var(--brand-bg); border-radius: 8px; padding: 10px 12px;
+            font-size: 12px; margin-bottom: 16px;
+        }
+        .ajuda-secao { margin-bottom: 18px; }
+        .ajuda-secao h4 {
+            font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;
+            color: var(--text-muted); margin-bottom: 6px; font-weight: 700;
+        }
+        .ajuda-secao p { margin: 4px 0; }
+        .ajuda-secao ul { margin: 4px 0 4px 18px; }
+        .ajuda-conta {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+            background: var(--brand-bg); border-radius: 6px; padding: 6px 10px; margin: 6px 0;
+            white-space: pre-wrap;
+        }
+        .ajuda-res { font-weight: 700; }
+        .ajuda-nota { font-size: 12px; color: var(--text-muted); }
 
         /* === Tela de Login === */
         .login-screen {
@@ -2487,6 +2548,7 @@
     </div>
     <div class="header-right">
         <span class="last-update" id="lastUpdate">Carregando...</span>
+        <button class="btn-ajuda" id="btnAjuda" onclick="toggleAjuda()" title="Como esses n&uacute;meros s&atilde;o calculados">?</button>
         <button class="btn-refresh" id="btnRefresh" onclick="refreshPaginaAtiva()">Atualizar</button>
         <button class="btn-theme" onclick="toggleTheme()" id="btnTheme" title="Alternar Light/Dark mode">&#9790;</button>
         <button class="btn-logout" onclick="doLogout()" title="Sair">&#10150;</button>
@@ -2575,6 +2637,19 @@
         <div class="alm-modal-body" id="almModalBody"></div>
     </div>
 </div>
+
+<!-- Painel "Como calculamos" (botão ? da barra superior); conteúdo vem de ajuda-contas.js -->
+<div class="ajuda-overlay" id="ajudaOverlay" onclick="fecharAjuda()"></div>
+<aside class="ajuda-painel" id="ajudaPainel" aria-hidden="true">
+    <div class="ajuda-head">
+        <div>
+            <h3 id="ajudaTitulo">Como calculamos</h3>
+            <div class="ajuda-sub" id="ajudaSub"></div>
+        </div>
+        <button class="ajuda-fechar" onclick="fecharAjuda()" title="Fechar">&times;</button>
+    </div>
+    <div class="ajuda-corpo" id="ajudaCorpo"></div>
+</aside>
 
 <!-- Container para páginas customizadas -->
 <div id="customPagesContainer"></div>
@@ -3865,6 +3940,53 @@ function mostrarAbaAtiva(c) {
     window.addEventListener('resize', atualizarSetasAbas);
 })();
 
+// --- Painel "Como calculamos" (botão ?) ---
+// O conteúdo vem de ajuda-contas.js e é remontado quando a aba ou os números da tela mudam.
+var ajudaAberta = false, _ajudaUltimo = '', _ajudaTimer = null;
+
+function renderAjuda() {
+    if (!ajudaAberta || !window.AJUDA) return;
+    var c = AJUDA.montar(activePage);
+    var chave = c.titulo + '|' + c.sub + '|' + c.html;
+    if (chave === _ajudaUltimo) return; // nada mudou: não mexe (evita pular a rolagem)
+    _ajudaUltimo = chave;
+    document.getElementById('ajudaTitulo').textContent = 'Como calculamos — ' + c.titulo;
+    document.getElementById('ajudaSub').textContent = c.sub || '';
+    document.getElementById('ajudaCorpo').innerHTML = c.html;
+}
+function abrirAjuda() {
+    ajudaAberta = true;
+    _ajudaUltimo = '';
+    renderAjuda();
+    document.getElementById('ajudaPainel').classList.add('show');
+    document.getElementById('ajudaPainel').setAttribute('aria-hidden', 'false');
+    document.getElementById('ajudaOverlay').classList.add('show');
+    document.getElementById('btnAjuda').classList.add('ativo');
+}
+function fecharAjuda() {
+    ajudaAberta = false;
+    document.getElementById('ajudaPainel').classList.remove('show');
+    document.getElementById('ajudaPainel').setAttribute('aria-hidden', 'true');
+    document.getElementById('ajudaOverlay').classList.remove('show');
+    document.getElementById('btnAjuda').classList.remove('ativo');
+}
+function toggleAjuda() { if (ajudaAberta) fecharAjuda(); else abrirAjuda(); }
+function agendarAjuda() {
+    if (!ajudaAberta) return;
+    clearTimeout(_ajudaTimer);
+    _ajudaTimer = setTimeout(renderAjuda, 300);
+}
+document.addEventListener('keydown', function(e) { if (e.key === 'Escape' && ajudaAberta) fecharAjuda(); });
+// Qualquer redesenho de tela (filtro, mês, atualização automática) remonta a explicação
+(function() {
+    var obs = new MutationObserver(agendarAjuda);
+    ['page-dashboard', 'page-logistica', 'page-vendas', 'page-faturamento', 'page-almoxarifado',
+     'page-marketing_organico', 'page-marketing_pago'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) obs.observe(el, { childList: true, subtree: true });
+    });
+})();
+
 // --- Switch page ---
 function switchPage(pageId) {
     // Bloqueia acesso a páginas sem permissão
@@ -3932,6 +4054,7 @@ function switchPage(pageId) {
         }
     }
     renderPageTabs();
+    agendarAjuda();
 }
 
 // --- Build empty page ---
