@@ -11,6 +11,9 @@ function carregar(estado) {
   vm.runInContext(readFileSync(new URL('../ajuda-contas.js', import.meta.url), 'utf8'), ctx)
   return ctx.window.AJUDA
 }
+// Mesma função usada pela tela (copiada do index.html para o teste não divergir).
+const MES_CHEIO = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
+  .match(/function almPeriodoMesCheio[\s\S]*?\n}\n/)[0]
 const texto = (html) => html.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ')
 
 test('diasUteis conta seg–sex e para em "hoje"', () => {
@@ -61,6 +64,30 @@ test('Almoxarifado mostra filtro, meta proporcional e acuracidade', () => {
   assert.match(t, /Estoque: MATERIA PRIMA/)
   assert.match(t, /Meta: 150 ÷ 30 × 31 = 155/)
   assert.match(t, /65 ÷ 66 × 100 = 98,48%/)
+})
+
+test('Almoxarifado: mês inteiro usa a meta mensal cheia (12 de 12 = 100%)', () => {
+  const A = carregar(MES_CHEIO + `
+    function almMetaMensal() { return 12; }
+    var almState = { activePreset: 'mes_anterior', startDate: '2026-10-01', endDate: '2026-10-31', estoque: 'PRODUTO ACABADO',
+      data: { period: { days: 31 }, previousPeriod: { startDate: '2026-08-31', endDate: '2026-09-30' }, previous: { itens: { contados: 0 } },
+        current: { itens: { contados: 12 }, pecas: {}, valor: {} } } };
+  `)
+  const t = texto(A.montar('almoxarifado').html)
+  assert.match(t, /Meta: mês inteiro = 12/)
+  assert.match(t, /12 ÷ 12,0 × 100 = 100,0%/)
+})
+
+test('almPeriodoMesCheio: só dia 1 ao último dia do mesmo mês', () => {
+  const ctx = {}
+  vm.createContext(ctx)
+  vm.runInContext(MES_CHEIO, ctx)
+  assert.equal(ctx.almPeriodoMesCheio('2026-10-01', '2026-10-31'), true)
+  assert.equal(ctx.almPeriodoMesCheio('2026-02-01', '2026-02-28'), true)
+  assert.equal(ctx.almPeriodoMesCheio('2026-10-01', '2026-10-30'), false)
+  assert.equal(ctx.almPeriodoMesCheio('2026-10-02', '2026-10-31'), false)
+  assert.equal(ctx.almPeriodoMesCheio('2026-10-15', '2026-11-13'), false)
+  assert.equal(ctx.almPeriodoMesCheio('2026-01-01', '2026-11-16'), false)
 })
 
 test('Almoxarifado: cada cartão explica o número e o selo de variação, igual à tela', () => {

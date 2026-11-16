@@ -309,7 +309,9 @@
         var dias = (d.period && d.period.days) || 0;
         var almMeta = ler('almMetaMensal');
         var metaMensal = typeof almMeta === 'function' ? almMeta() : 0;
-        var meta = metaMensal * dias / 30;
+        var mesCheioFn = ler('almPeriodoMesCheio');
+        var mesCheio = typeof mesCheioFn === 'function' && mesCheioFn(st.startDate, st.endDate);
+        var meta = mesCheio ? metaMensal : metaMensal * dias / 30;
         var ating = meta > 0 ? (it.contados || 0) / meta * 100 : 0;
         function n0(v) { return num(v); }
         function r2(v) { return brl(v); }
@@ -329,8 +331,10 @@
         h += card('Itens contados', n0(it.contados), [
             { nome: 'Quantidade', texto: 'Linhas da planilha contadas no período.', conta: '= ' + res(n0(it.contados)) },
             vari(it.contados, pIt.contados, false, n0),
-            { nome: 'Meta e % da meta (linha de baixo e barra)', texto: 'Meta mensal (' + (st.estoque ? 'do estoque filtrado' : 'Meta PA + Meta MP') + ') proporcional aos dias do período. Barra verde a partir de 100%, amarela a partir de 70%, vermelha abaixo.',
-              conta: 'Meta: ' + num(metaMensal) + ' ÷ 30 × ' + dias + ' = ' + res(num(Math.round(meta))) + '\n% da meta: ' + n0(it.contados) + ' ÷ ' + num(meta, 1) + ' × 100 = ' + res(pct(ating)) }
+            { nome: 'Meta e % da meta (linha de baixo e barra)', texto: 'Meta mensal (' + (st.estoque ? 'do estoque filtrado' : 'Meta PA + Meta MP') + ')' +
+                (mesCheio ? ' cheia, porque o período é um mês inteiro (dia 1 ao último dia).' : ' proporcional aos dias do período (o período não é um mês inteiro).') +
+                ' Barra verde a partir de 100%, amarela a partir de 70%, vermelha abaixo.',
+              conta: (mesCheio ? 'Meta: mês inteiro = ' : 'Meta: ' + num(metaMensal) + ' ÷ 30 × ' + dias + ' = ') + res(num(Math.round(meta))) + '\n% da meta: ' + n0(it.contados) + ' ÷ ' + num(meta, 1) + ' × 100 = ' + res(pct(ating)) }
         ]);
         h += card('Sem divergências', n0(it.semDivergencia), [
             { nome: 'Quantidade', texto: 'Linhas com diferença 0 (físico = sistema).', conta: '= ' + res(n0(it.semDivergencia)) },

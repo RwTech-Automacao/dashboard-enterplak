@@ -6706,6 +6706,14 @@ function almDaysInRange(s, e) {
     return Math.round((d2 - d1) / 86400000) + 1;
 }
 
+// Período = um mês inteiro (dia 1 ao último dia do mesmo mês)? Então vale a meta mensal cheia.
+function almPeriodoMesCheio(s, e) {
+    if (!s || !e || s.slice(0, 7) !== e.slice(0, 7) || s.slice(8, 10) !== '01') return false;
+    var d = new Date(e + 'T00:00:00');
+    var ultimo = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    return d.getDate() === ultimo;
+}
+
 window.almSelectPreset = function(preset) {
     almApplyPreset(preset);
     var sEl = document.getElementById('almStart'), eEl = document.getElementById('almEnd');
@@ -6828,11 +6836,13 @@ function almRenderBody(data) {
     var pValor = data.modoAno ? {} : (prev.valor || {});
     var tituloEvolucao = data.modoAnoMensal ? 'Evolu&ccedil;&atilde;o m&ecirc;s a m&ecirc;s' : 'Evolu&ccedil;&atilde;o';
 
-    // Meta proporcional ao período
+    // Meta: mês inteiro = meta mensal cheia; outros períodos = proporcional aos dias
     var days = data.period && data.period.days
         ? data.period.days
         : almDaysInRange(almState.startDate, almState.endDate);
-    var meta = (almMetaMensal() * days) / 30;
+    var meta = almPeriodoMesCheio(almState.startDate, almState.endDate)
+        ? almMetaMensal()
+        : (almMetaMensal() * days) / 30;
     var atingidoPct = meta > 0 ? (itens.contados / meta) * 100 : 0;
     var barClass = atingidoPct >= 100 ? 'ok' : (atingidoPct >= 70 ? 'warn' : 'under');
 
